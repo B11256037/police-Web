@@ -14,7 +14,7 @@
 // ====================================================
 // 設定
 // ====================================================
-const API_BASE = 'http://192.168.50.223:8000';
+const API_BASE = 'https://police-api.ignirelay.com';
 const POLL_INTERVAL = 3000;
 
 // ====================================================
@@ -140,12 +140,22 @@ function normalizeCase(raw) {
     dangerLevel: level === 'High' ? '高' : level === 'Medium' ? '中' : '低',
     aiSuggestion,
     eventType: raw.category || raw.title || '未知',
-    sceneStatus: desc,
+    sceneStatus: formatCaseDescription(desc),
     status,
     statusClass: dotClass,
     lat, lng,
     createdAt,
   };
+}
+
+// 將案件描述中常見的欄位標籤（姓名／電話／緊急聯絡人／地址備註…）各自換行，
+// 使其呈現方式與通報端一致（一行一個欄位），而非擠成一整段文字
+function formatCaseDescription(text) {
+  var s = String(text || '').trim();
+  ['姓名：', '電話：', '緊急聯絡人：', '地址/備註：', '請依狀況判斷'].forEach(function (label) {
+    s = s.replace(new RegExp('\\s*' + label, 'g'), '\n' + label);
+  });
+  return s.replace(/^\n+/, '');
 }
 
 function formatTimeAgo(date) {
@@ -344,7 +354,7 @@ function showApiError() {
     'border-bottom:1px solid #ef4444', 'color:#ef4444',
     'text-align:center', 'padding:8px 16px', 'font-size:13px',
   ].join(';');
-  el.textContent = '無法連線到後端（192.168.50.223:8000），請確認 FastAPI 是否運行中';
+  el.textContent = '無法連線到後端（' + API_BASE + '），請確認 FastAPI 是否運行中';
   document.body.appendChild(el);
 }
 

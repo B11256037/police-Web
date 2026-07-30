@@ -259,11 +259,15 @@ function showMapInfoCard(c) {
     '<div class="mc-row" style="align-items:flex-start;"><span class="mc-label">地點</span>' +
     '<span style="flex:1;word-break:break-all;font-size:12px;">' + c.address + '</span>' +
     '</div>' +
+    (c.lat != null && c.lng != null
+      ? '<div class="mc-row"><span class="mc-label">座標</span><span style="font-size:12px;">' +
+        c.lat.toFixed(6) + ', ' + c.lng.toFixed(6) + '</span></div>'
+      : '') +
     '<div class="mc-row"><span class="mc-label">建立</span><span style="font-size:12px;">' + c.createdAt.toLocaleString('zh-TW') + '</span></div>' +
 
-    // 描述
+    // 描述（保留原始換行/分段，與警員操作頁的案件描述一致）
     (c.sceneStatus
-      ? '<div style="margin-top:10px;padding:8px 10px;background:var(--panel-2);border-radius:6px;font-size:12px;color:var(--text-muted);max-height:80px;overflow-y:auto;word-break:break-all;">' + c.sceneStatus + '</div>'
+      ? '<div style="margin-top:10px;padding:8px 10px;background:var(--panel-2);border-radius:6px;font-size:12px;color:var(--text-muted);max-height:160px;overflow-y:auto;word-break:break-all;white-space:pre-wrap;">' + c.sceneStatus + '</div>'
       : '') +
 
     // 按鈕：跳至警員操作頁處理
