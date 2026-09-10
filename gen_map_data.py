@@ -15,6 +15,7 @@ TOWN_OUT   = os.path.join(BASE, "town_data.js")
 
 COUNTY_TOL = 0        # 0 = 不簡化，保留原始座標
 TOWN_TOL   = 0        # 0 = 不簡化，保留原始座標
+COORD_DIG  = 7        # 座標四捨五入位數（約 1cm 精度）
 
 def round_coords(obj):
     """遞迴四捨五入座標"""

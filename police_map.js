@@ -15,9 +15,8 @@ var _currentPoliceCty   = null;
 var _bureauIndex = [];  // [ { name, bureau, stations, districts }, ... ]
 
 // ── 地名標準化 ────────────────────────────────────────────
-function _pNorm(s) {
-  return String(s || '').replace(/台(北|南|中|東|灣)/g, '臺$1');
-}
+// 台/臺 轉換與 Main.js 的 _normAddr() 共用同一份規則（該檔案先載入，這裡直接沿用避免重複維護兩份 regex）
+var _pNorm = _normAddr;
 // 鄉鎮名稱正規化：統一 洲↔州 字元不一致
 function _normTown(s) {
   return String(s || '').replace(/洲/g, '州');
@@ -552,6 +551,21 @@ function _showPolicePanelList(county) {
   if (titleEl) titleEl.textContent = county + '　警察局所';
   if (body)    body.innerHTML = _buildPanelHTML(county);
   panel.classList.remove('hidden');
+  _syncPolicePanelBottom();
+}
+
+// ============================================================
+// 面板底部定位：依左下角統計卡（.map-legend-stats）的實際渲染高度
+// 動態計算，取代原本在三個 RWD 斷點各自寫死的 bottom 像素值
+// （原本的寫死數字一旦統計卡內容/字級變動就會對不齊，需要手動同步三處）
+// ============================================================
+function _syncPolicePanelBottom() {
+  var panel = document.getElementById('policePanel');
+  var stats = document.querySelector('.map-legend-stats');
+  if (!panel || !stats || panel.classList.contains('hidden')) return;
+  var STATS_BOTTOM_OFFSET = 8;  // 對應 .map-bottom-left 的 bottom
+  var GAP = 14;                 // 面板與統計卡之間的留白
+  panel.style.bottom = (STATS_BOTTOM_OFFSET + stats.offsetHeight + GAP) + 'px';
 }
 
 // ============================================================
@@ -559,4 +573,5 @@ function _showPolicePanelList(county) {
 // ============================================================
 document.addEventListener('DOMContentLoaded', function () {
   _initPolicePanelEvents();
+  window.addEventListener('resize', _syncPolicePanelBottom);
 });

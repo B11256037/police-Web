@@ -14,6 +14,7 @@ var currentPage = 'map';
 // 今日地圖（全螢幕）
 var todayMap        = null;
 var todayMarkers    = {};
+var todayMarkerCluster = null;  // 案件標記群聚圖層，避免同鄉鎮多筆案件疊在一起難以點選
 var currentTileLayer = null;
 var currentMapType   = 'emap';
 
@@ -74,11 +75,6 @@ function switchPage(page) {
     }, 60);
     renderTodayMapDots();
     updateMapStats();
-  } else if (page === 'officer') {
-    // 頁面二：三欄操作介面，地圖需要 invalidate
-    setTimeout(function () {
-      if (typeof leafletMap !== 'undefined' && leafletMap) leafletMap.invalidateSize();
-    }, 60);
   } else if (page === 'history') {
     // 先儲存今日快照再渲染
     saveTodaySnapshot();
@@ -117,11 +113,64 @@ function initTodayMap() {
   });
   currentTileLayer.addTo(todayMap);
 
+  // 案件標記群聚圖層：案件一多，同鄉鎮的點會疊在一起難以點選，改用群聚圓泡呈現，
+  // 點擊會自動放大；放到最大縮放層級仍群聚時會「展開」成扇形方便個別點選
+  if (typeof L.markerClusterGroup === 'function') {
+    todayMarkerCluster = L.markerClusterGroup({
+      maxClusterRadius: 55,
+      disableClusteringAtZoom: 16,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+      iconCreateFunction: _buildClusterIcon
+    });
+    todayMarkerCluster.addTo(todayMap);
+  }
+
   if (typeof loadCountyBoundaries === 'function') loadCountyBoundaries();
 }
 
-function makeTodayIcon(color, isHandled) {
+// 群聚圓泡：顏色取「泡泡內最嚴重的風險等級」（高風險 > 中風險 > 低風險 > 已轉人工），
+// 避免高風險案件被藏在群聚裡、被較低風險的數量淹沒而漏看
+function _buildClusterIcon(cluster) {
+  var children = cluster.getAllChildMarkers();
+  var hasHigh = false, hasMed = false, hasActive = false;
+  children.forEach(function (m) {
+    if (m._ecareTransferred) return;
+    hasActive = true;
+    if (m._ecareRisk === 'High') hasHigh = true;
+    else if (m._ecareRisk === 'Medium') hasMed = true;
+  });
+  var color = !hasActive ? markerColorsPage.inactive :
+    hasHigh ? markerColorsPage.danger : hasMed ? markerColorsPage.warn : markerColorsPage.safe;
+
+  var count = cluster.getChildCount();
+  var size = count < 10 ? 34 : count < 30 ? 42 : 50;
+  // 內含高風險案件時，外圈加脈衝提示（動畫套在外圈而非泡泡本體，數字才不會跟著閃爍）
+  var pulse = hasHigh
+    ? '<div style="position:absolute;inset:-5px;border-radius:50%;border:2px solid ' + color +
+      ';animation:pulse-marker 2s infinite;opacity:0.5;"></div>'
+    : '';
+
+  return L.divIcon({
+    className: '',
+    html: '<div style="position:relative;width:' + size + 'px;height:' + size + 'px;">' +
+      pulse +
+      '<div style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;' +
+      'background:' + color + ';border:3px solid rgba(255,255,255,0.95);' +
+      'display:flex;align-items:center;justify-content:center;' +
+      'box-shadow:0 2px 10px rgba(23,43,58,0.35);' +
+      'color:#fff;font-weight:800;font-size:' + Math.round(size * 0.4) + 'px;">' +
+      count + '</div>' +
+      '</div>',
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2]
+  });
+}
+
+// letter：風險等級文字標示（H/M/L），讓色盲使用者除了顏色以外還有第二個辨識線索
+function makeTodayIcon(color, isHandled, letter) {
   var size = isHandled ? 14 : 18;
+  var fontSize = isHandled ? 8 : 10;
   var pulse = isHandled ? '' :
     '<div style="position:absolute;inset:-4px;border-radius:50%;border:2px solid ' + color +
     ';animation:pulse-marker 2s infinite;opacity:0.5;"></div>';
@@ -132,7 +181,11 @@ function makeTodayIcon(color, isHandled) {
       '<div style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;' +
       'background:' + color + ';border:2.5px solid rgba(255,255,255,0.9);' +
       'box-shadow:0 0 ' + (isHandled ? '4' : '10') + 'px ' + color + ';' +
-      'opacity:' + (isHandled ? '0.5' : '1') + ';"></div>' +
+      'opacity:' + (isHandled ? '0.5' : '1') + ';' +
+      'display:flex;align-items:center;justify-content:center;' +
+      'font:800 ' + fontSize + 'px/1 var(--font,sans-serif);color:rgba(0,0,0,0.6);">' +
+      (letter || '') +
+      '</div>' +
       '</div>',
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
@@ -179,7 +232,8 @@ function renderTodayMapDots() {
   // 移除消失的 + 已結案/誤報的
   Object.keys(todayMarkers).forEach(function (id) {
     if (!activeIds.has(id)) {
-      todayMap.removeLayer(todayMarkers[id]);
+      if (todayMarkerCluster) todayMarkerCluster.removeLayer(todayMarkers[id]);
+      else todayMap.removeLayer(todayMarkers[id]);
       delete todayMarkers[id];
     }
   });
@@ -199,17 +253,27 @@ function renderTodayMapDots() {
       c.riskLevel === 'High' ? 'danger' :
         c.riskLevel === 'Medium' ? 'warn' : 'safe';
     var color = markerColorsPage[dotKey];
-    var icon = makeTodayIcon(color, isTransferred);
+    var letter = isTransferred ? '' : (c.riskLevel === 'High' ? 'H' : c.riskLevel === 'Medium' ? 'M' : 'L');
+    var icon = makeTodayIcon(color, isTransferred, letter);
 
     if (todayMarkers[c.id]) {
       todayMarkers[c.id].setIcon(icon);
       todayMarkers[c.id].setLatLng([lat, lng]);
+      // 風險/狀態可能隨輪詢改變，更新群聚判色用的資料並讓群聚重新計算顏色
+      todayMarkers[c.id]._ecareRisk = c.riskLevel;
+      todayMarkers[c.id]._ecareTransferred = isTransferred;
+      if (todayMarkerCluster && todayMarkerCluster.refreshClusters) {
+        todayMarkerCluster.refreshClusters(todayMarkers[c.id]);
+      }
     } else {
       var marker = L.marker([lat, lng], { icon: icon });
+      marker._ecareRisk = c.riskLevel;
+      marker._ecareTransferred = isTransferred;
       marker.on('click', (function (caseObj) {
         return function () { showMapInfoCard(caseObj); };
       })(c));
-      marker.addTo(todayMap);
+      if (todayMarkerCluster) todayMarkerCluster.addLayer(marker);
+      else marker.addTo(todayMap);
       todayMarkers[c.id] = marker;
     }
   });
@@ -233,8 +297,8 @@ function showMapInfoCard(c) {
   var statusIcon = isHandled ? '✅' : '🔴';
   var statusText = isHandled ? c.status : '未處理';
   var statusStyle = isHandled
-    ? 'color:var(--safe);background:rgba(16,185,129,0.12);'
-    : 'color:var(--danger);background:rgba(239,68,68,0.12);';
+    ? 'color:var(--safe-text);background:rgba(16,185,129,0.12);'
+    : 'color:var(--danger-text);background:rgba(239,68,68,0.12);';
 
   body.innerHTML =
     // 頂部色條
@@ -243,7 +307,7 @@ function showMapInfoCard(c) {
     // 標題
     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">' +
     '<span style="width:10px;height:10px;border-radius:50%;background:' + dotColor + ';flex-shrink:0;box-shadow:0 0 6px ' + dotColor + ';display:inline-block;"></span>' +
-    '<span style="font-size:15px;font-weight:700;color:var(--text);">' + c.code + '&nbsp;' + c.type + '</span>' +
+    '<span style="font-size:15px;font-weight:700;color:var(--text);">' + escapeHtml(c.code) + '&nbsp;' + escapeHtml(c.type) + '</span>' +
     '</div>' +
 
     // 狀態徽章
@@ -252,12 +316,12 @@ function showMapInfoCard(c) {
     '</div>' +
 
     // 資訊列
-    '<div class="mc-row"><span class="mc-label">類型</span><span>' + c.type + '</span></div>' +
+    '<div class="mc-row"><span class="mc-label">類型</span><span>' + escapeHtml(c.type) + '</span></div>' +
     '<div class="mc-row"><span class="mc-label">風險</span>' +
     '<span class="risk-badge ' + rCls + '" style="font-size:11px;">' + c.level + '（' + c.riskScore + '）</span>' +
     '</div>' +
     '<div class="mc-row" style="align-items:flex-start;"><span class="mc-label">地點</span>' +
-    '<span style="flex:1;word-break:break-all;font-size:12px;">' + c.address + '</span>' +
+    '<span style="flex:1;word-break:break-all;font-size:12px;">' + escapeHtml(c.address) + '</span>' +
     '</div>' +
     (c.lat != null && c.lng != null
       ? '<div class="mc-row"><span class="mc-label">座標</span><span style="font-size:12px;">' +
@@ -267,12 +331,12 @@ function showMapInfoCard(c) {
 
     // 描述（保留原始換行/分段，與警員操作頁的案件描述一致）
     (c.sceneStatus
-      ? '<div style="margin-top:10px;padding:8px 10px;background:var(--panel-2);border-radius:6px;font-size:12px;color:var(--text-muted);max-height:160px;overflow-y:auto;word-break:break-all;white-space:pre-wrap;">' + c.sceneStatus + '</div>'
+      ? '<div style="margin-top:10px;padding:8px 10px;background:var(--panel-2);border-radius:6px;font-size:12px;color:var(--text-muted);max-height:160px;overflow-y:auto;word-break:break-all;white-space:pre-wrap;">' + escapeHtml(c.sceneStatus) + '</div>'
       : '') +
 
     // 按鈕：跳至警員操作頁處理
     (!isHandled
-      ? '<button onclick="switchPage(\'officer\');setTimeout(function(){renderDetail(\'' + c.id + '\');},80);" ' +
+      ? '<button onclick="switchPage(\'officer\');setTimeout(function(){renderDetail(\'' + escapeJsAttr(c.id) + '\');},80);" ' +
       'style="margin-top:12px;width:100%;background:var(--accent);border:none;border-radius:6px;padding:9px;' +
       'color:white;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font);">前往處理</button>'
       : '<div style="margin-top:10px;text-align:center;font-size:12px;color:var(--text-dim);">此案件已結案</div>');
@@ -321,6 +385,35 @@ function switchMapType(type) {
 
   document.querySelectorAll('.map-type-btn').forEach(function (btn) {
     btn.classList.toggle('active', btn.dataset.type === type);
+  });
+}
+
+// ====================================================
+// 左下統計卡收合／展開（案件多時常擋住南部海岸線的標記，預設收合只留標題列）
+// ====================================================
+function _toggleMapStats() {
+  var panel = document.getElementById('mapLegendStats');
+  var toggle = document.getElementById('mlsToggle');
+  if (!panel) return;
+  var collapsed = panel.classList.toggle('collapsed');
+  if (toggle) toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  try { localStorage.setItem('ecare_statsCollapsed', collapsed ? '1' : '0'); } catch (e) {}
+}
+
+function _initMapStatsToggle() {
+  var panel = document.getElementById('mapLegendStats');
+  var toggle = document.getElementById('mlsToggle');
+  if (!panel || !toggle) return;
+
+  var saved = null;
+  try { saved = localStorage.getItem('ecare_statsCollapsed'); } catch (e) {}
+  var collapsed = saved === null ? true : saved === '1'; // 沒存過偏好時，預設收合
+  panel.classList.toggle('collapsed', collapsed);
+  toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+
+  toggle.addEventListener('click', _toggleMapStats);
+  toggle.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _toggleMapStats(); }
   });
 }
 
@@ -468,15 +561,15 @@ function renderHistory() {
           : c.createdAt.toLocaleString('zh-TW'))
         : '—';
 
-      html += '<tr class="history-row" onclick="jumpToCase(\'' + c.id + '\')" title="點擊跳至警員操作查看">' +
-        '<td><span class="case-code" style="font-size:12px;">' + c.code + '</span></td>' +
-        '<td>' + c.type + '</td>' +
+      html += '<tr class="history-row" onclick="jumpToCase(\'' + escapeJsAttr(c.id) + '\')" title="點擊跳至警員操作查看">' +
+        '<td><span class="case-code" style="font-size:12px;">' + escapeHtml(c.code) + '</span></td>' +
+        '<td>' + escapeHtml(c.type) + '</td>' +
         '<td><span class="risk-badge ' + rCls + '" style="font-size:11px;">' + rText + '</span></td>' +
-        '<td title="' + addr + '">' + addrShort + '</td>' +
+        '<td title="' + escapeHtml(addr) + '">' + escapeHtml(addrShort) + '</td>' +
         '<td>' + sBadge + '</td>' +
         '<td style="white-space:nowrap;font-size:12px;">' + createdStr + '</td>' +
         '<td><button class="officer-btn safe" style="padding:3px 8px;font-size:11px;" ' +
-        'onclick="event.stopPropagation();jumpToCase(\'' + c.id + '\')">查看</button></td>' +
+        'onclick="event.stopPropagation();jumpToCase(\'' + escapeJsAttr(c.id) + '\')">查看</button></td>' +
         '</tr>';
     });
 
@@ -507,14 +600,25 @@ function clearHistoryFilters() {
   renderHistory();
 }
 
+// 「檢視統計」佔位入口：熱點分析圖表尚未實作，先讓入口存在並說明即將提供的功能，
+// 之後接圖表時只要把這個 function 內容換掉即可，不用動按鈕本身
+function openHistoryStatsPlaceholder() {
+  if (typeof openModal !== 'function') return;
+  openModal({
+    title: '案件熱點分析',
+    subtitle: '這個功能正在開發中，之後會在這裡呈現歷史案件的地點熱點分佈、風險等級趨勢等統計圖表。',
+    confirmText: '了解',
+    showNote: false
+  });
+}
+
 // ====================================================
 // 與 main.js loadCases 整合：每次拉到新資料後同步
 // ====================================================
-// 攔截 setupMapDots，在頁面一時也更新今日地圖
-var _origSetupMapDots = null;
 document.addEventListener('DOMContentLoaded', function () {
   // 初始化今日地圖（預設頁面）
   initTodayMap();
+  _initMapStatsToggle();
   // 等地圖 tile 稍微載入後再渲染點（cases 此時可能還是空的，loadCases 完成後會再呼叫一次）
   setTimeout(function () {
     if (todayMap) todayMap.invalidateSize();

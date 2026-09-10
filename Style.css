@@ -1,31 +1,117 @@
 /* =========================================================
    E-CARE 緊急報案系統 - 主要樣式表
-   深色卡片式 UI，深藍/灰色調，圓角細邊框
+   雙主題：米黃亮色（預設）／暖炭灰深色，同色系只反轉明暗。
+   Token 分三層套用：
+     1. :root                          → 亮色（預設值、也是沒有 JS 時的後備值）
+     2. @media prefers-color-scheme    → 使用者作業系統設定深色時自動套用
+     3. :root[data-theme="light/dark"] → 使用者按下右上角切換鈕的手動覆蓋，優先權最高
    ========================================================= */
 
 /* --- CSS 變數（主色、字級、間距） --- */
 :root {
-  --bg: #0f1720;
-  --panel: #1f2933;
-  --panel-2: #27313a;
-  --panel-3: #2d3b47;
-  --accent: #2aa7df;
-  --accent-glow: rgba(42, 167, 223, 0.25);
+  --bg: #f7f2e6;
+  --panel: #fffdf6;
+  --panel-2: #f3ecdd;
+  --panel-3: #f0ebde;
+  --accent: #0f6fb3;
+  --accent-glow: rgba(15, 111, 179, 0.16);
+
+  /* 高飽和度版本：用於圓點／長條圖／地圖標記／徽章底色等「非文字」裝飾用途，
+     兩個主題共用同一組，不受亮/暗切換影響，跟地圖標記顏色保持一致 */
   --danger: #ef4444;
   --warn: #f59e0b;
   --safe: #10b981;
-  --text: #dbe6ee;
-  --text-muted: #8fa5b5;
-  --text-dim: #5c7487;
-  --border: rgba(255, 255, 255, 0.06);
-  --border-accent: rgba(42, 167, 223, 0.35);
+
+  /* 文字專用版本：飽和色直接當文字色在淺底上對比度不夠（尤其橘色系），
+     這組刻意加深，確保在 --panel-3 這種最淺的中性底色上仍達 WCAG AA（≥4.5:1） */
+  --danger-text: #b02a37;
+  --warn-text: #8a5000;
+  --safe-text: #0f6347;
+  --police-text: #1e40af;
+
+  --text: #1a2733;
+  --text-muted: #5b6b7a;
+  --text-dim: #56636f;
+  --border: #e2e8ee;
+  --border-accent: rgba(15, 111, 179, 0.32);
+
+  /* 地圖上浮動面板背景（無法用 rgba(var(--panel-rgb)) 的地方直接寫死顏色，隨主題切換） */
+  --panel-rgb: 255, 253, 246;
+
   --radius: 8px;
   --radius-lg: 12px;
-  --shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-  --shadow-hover: 0 8px 32px rgba(0, 0, 0, 0.6);
+  --shadow: 0 4px 16px rgba(23, 43, 58, 0.08);
+  --shadow-hover: 0 10px 28px rgba(23, 43, 58, 0.14);
   --transition: 0.2s ease;
   --font: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
   --header-h: 126px;
+}
+
+/* 暖炭灰深色版 token（同色系反轉明暗，不用冷灰藍黑） */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1d1b17;
+    --panel: #26221c;
+    --panel-2: #2f2a22;
+    --panel-3: #3d372e;
+    --accent: #4fa8dd;
+    --accent-glow: rgba(79, 168, 221, 0.22);
+    --danger-text: #fca5a5;
+    --warn-text: #fcd34d;
+    --safe-text: #6ee7b7;
+    --police-text: #93c5fd;
+    --text: #ede9e0;
+    --text-muted: #ada597;
+    --text-dim: #a89f90;
+    --border: #3d372e;
+    --border-accent: rgba(79, 168, 221, 0.35);
+    --panel-rgb: 38, 34, 28;
+    --shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    --shadow-hover: 0 10px 28px rgba(0, 0, 0, 0.45);
+  }
+}
+
+/* 使用者手動切換（蓋過系統設定），由 JS 在 <html> 上設定 data-theme 並存進 localStorage */
+:root[data-theme="dark"] {
+  --bg: #1d1b17;
+  --panel: #26221c;
+  --panel-2: #2f2a22;
+  --panel-3: #3d372e;
+  --accent: #4fa8dd;
+  --accent-glow: rgba(79, 168, 221, 0.22);
+  --danger-text: #fca5a5;
+  --warn-text: #fcd34d;
+  --safe-text: #6ee7b7;
+  --police-text: #93c5fd;
+  --text: #ede9e0;
+  --text-muted: #ada597;
+  --text-dim: #a89f90;
+  --border: #3d372e;
+  --border-accent: rgba(79, 168, 221, 0.35);
+  --panel-rgb: 38, 34, 28;
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-hover: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+
+:root[data-theme="light"] {
+  --bg: #f7f2e6;
+  --panel: #fffdf6;
+  --panel-2: #f3ecdd;
+  --panel-3: #f0ebde;
+  --accent: #0f6fb3;
+  --accent-glow: rgba(15, 111, 179, 0.16);
+  --danger-text: #b02a37;
+  --warn-text: #8a5000;
+  --safe-text: #0f6347;
+  --police-text: #1e40af;
+  --text: #1a2733;
+  --text-muted: #5b6b7a;
+  --text-dim: #56636f;
+  --border: #e2e8ee;
+  --border-accent: rgba(15, 111, 179, 0.32);
+  --panel-rgb: 255, 253, 246;
+  --shadow: 0 4px 16px rgba(23, 43, 58, 0.08);
+  --shadow-hover: 0 10px 28px rgba(23, 43, 58, 0.14);
 }
 
 /* --- 重置與基礎 --- */
@@ -122,6 +208,32 @@ body {
 }
 
 /* 音效開關按鈕 */
+/* 亮/暗主題切換鈕（跟音效開關同款式） */
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 14px;
+  cursor: pointer;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  transition: all var(--transition);
+}
+
+.theme-toggle:hover {
+  border-color: var(--accent);
+  background: var(--panel-3);
+}
+
+.theme-toggle-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
 .sound-toggle {
   display: flex;
   align-items: center;
@@ -224,6 +336,7 @@ body {
   font-size: 15px;
   color: var(--text);
   margin-left: 2px;
+  font-variant-numeric: tabular-nums;
 }
 
 .stat-badge {
@@ -257,6 +370,7 @@ body {
 .stat-count {
   font-weight: 700;
   color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
 
 /* 統計切換 */
@@ -443,22 +557,23 @@ body {
   border-radius: 10px;
   flex-shrink: 0;
   letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
 /* 風險分數顏色 */
 .case-card[data-risk="High"] .case-risk {
-  background: rgba(239, 68, 68, 0.25);
-  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.14);
+  color: var(--danger-text);
 }
 
 .case-card[data-risk="Medium"] .case-risk {
-  background: rgba(245, 158, 11, 0.25);
-  color: #fcd34d;
+  background: rgba(245, 158, 11, 0.16);
+  color: var(--warn-text);
 }
 
 .case-card[data-risk="Low"] .case-risk {
-  background: rgba(16, 185, 129, 0.25);
-  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.14);
+  color: var(--safe-text);
 }
 
 .case-card.inactive .case-risk {
@@ -489,18 +604,18 @@ body {
 }
 
 .case-status-badge.misreport {
-  background: rgba(239, 68, 68, 0.18);
-  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--danger-text);
 }
 
 .case-status-badge.transferred {
-  background: rgba(245, 158, 11, 0.18);
-  color: #fcd34d;
+  background: rgba(245, 158, 11, 0.14);
+  color: var(--warn-text);
 }
 
 .case-status-badge.handled {
-  background: rgba(16, 185, 129, 0.18);
-  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--safe-text);
 }
 
 /* =========================================================
@@ -522,6 +637,12 @@ body {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+/* flex 子項目預設會被壓縮，內容一多時每個區塊會被裁切變形而非讓外層捲動；
+   鎖住高度，改成永遠用捲軸顯示完整內容 */
+.detail-scroll > * {
+  flex-shrink: 0;
 }
 
 /* 地圖佔位 */
@@ -667,6 +788,34 @@ body {
   color: var(--accent);
 }
 
+/* AI 語音分析區塊：App 端獨有資料（情緒分析／通話逐字稿），
+   用強調色外框 + 底色跟一般案件分析區隔開，是本系統相對傳統報案的差異化重點，要一眼看到 */
+.info-section--ai {
+  border-color: var(--border-accent);
+  box-shadow: 0 0 0 1px var(--border-accent);
+}
+
+.info-section--ai .info-section-header {
+  background: var(--accent-glow);
+  color: var(--accent);
+}
+
+.info-section--ai .info-section-header svg {
+  color: var(--accent);
+}
+
+.ai-source-badge {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  color: #fff;
+  background: var(--accent);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
 .info-section-body {
   padding: 14px 16px;
   display: flex;
@@ -694,17 +843,17 @@ body {
 }
 
 .info-value.danger {
-  color: var(--danger);
+  color: var(--danger-text);
   font-weight: 600;
 }
 
 .info-value.warn {
-  color: var(--warn);
+  color: var(--warn-text);
   font-weight: 600;
 }
 
 .info-value.safe {
-  color: var(--safe);
+  color: var(--safe-text);
   font-weight: 600;
 }
 
@@ -790,7 +939,7 @@ body {
 
 .btn-detail-action.danger-btn:hover {
   border-color: var(--danger);
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 /* =========================================================
@@ -809,7 +958,7 @@ body {
   padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 0;
   flex: 1;
 }
 
@@ -846,44 +995,29 @@ body {
   color: var(--accent);
 }
 
-.dispatch-btn.police:hover:not(:disabled) {
-  border-color: #60a5fa;
-  color: #60a5fa;
-  box-shadow: 0 0 12px rgba(96, 165, 250, 0.2);
-}
-
-.dispatch-btn.ambulance:hover:not(:disabled) {
-  border-color: var(--safe);
-  color: var(--safe);
-  box-shadow: 0 0 12px rgba(16, 185, 129, 0.2);
-}
-
-.dispatch-btn.fire:hover:not(:disabled) {
-  border-color: var(--danger);
-  color: var(--danger);
-  box-shadow: 0 0 12px rgba(239, 68, 68, 0.2);
-}
-
-.dispatch-btn.phone:hover:not(:disabled) {
-  border-color: var(--warn);
-  color: var(--warn);
-  box-shadow: 0 0 12px rgba(245, 158, 11, 0.2);
-}
-
 .dispatch-btn.close:hover:not(:disabled) {
   border-color: var(--safe);
-  color: var(--safe);
+  color: var(--safe-text);
   box-shadow: 0 0 12px rgba(16, 185, 129, 0.2);
 }
 
 .dispatch-btn.misreport:hover:not(:disabled) {
   border-color: var(--danger);
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
-.dispatch-btn.manual:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
+/* 救護派遣：滑過時偏紅，呼應醫療急救語意色 */
+.dispatch-btn.ambulance:hover:not(:disabled) {
+  border-color: var(--danger);
+  color: var(--danger-text);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.18);
+}
+
+/* 消防派遣：滑過時偏金黃，呼應火警語意色 */
+.dispatch-btn.fire:hover:not(:disabled) {
+  border-color: var(--warn);
+  color: var(--warn-text);
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.18);
 }
 
 .dispatch-btn:disabled {
@@ -896,6 +1030,41 @@ body {
 .dispatch-btn .btn-icon {
   font-size: 20px;
   line-height: 1;
+}
+
+/* =========================================================
+   派遣按鈕分組（依視覺權重：主動作／次要／結案／誤報獨立隔開）
+   ========================================================= */
+.dispatch-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dispatch-group + .dispatch-group {
+  margin-top: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.dispatch-group-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0 2px 2px;
+}
+
+/* 誤報分組標籤：與其他分組標籤（立即派遣／結案）維持相同字體樣式，
+   僅靠獨立分組、拉開距離來提醒這是破壞性操作 */
+
+/* 標記誤報：破壞性且較少用的操作，故意做得比較不顯眼、跟上面隔開一段距離，
+   避免情急之下跟「派遣警力」點錯 */
+.dispatch-group--danger {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px dashed var(--border);
 }
 
 /* =========================================================
@@ -1006,6 +1175,35 @@ body {
   background: var(--panel-2);
 }
 
+/* 高風險案件破壞性操作的二次確認勾選框 */
+.modal-confirm-guard {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius);
+  font-size: 13px;
+  color: var(--danger-text);
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.modal-confirm-guard.hidden {
+  display: none;
+}
+
+.modal-confirm-guard input[type="checkbox"] {
+  margin-top: 2px;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--danger-text);
+  cursor: pointer;
+}
+
 .modal-actions {
   display: flex;
   gap: 10px;
@@ -1036,6 +1234,13 @@ body {
 
 .btn-confirm.danger:hover {
   background: #c53030;
+}
+
+/* 高風險二次確認勾選前，確認鍵禁用——一定要看起來像按不下去，不然使用者會以為壞了 */
+.btn-confirm:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: grayscale(0.3);
 }
 
 .btn-cancel {
@@ -1219,9 +1424,14 @@ body {
     overflow: visible;
   }
 
-  .dispatch-buttons {
+  /* 分組維持直向堆疊，組內按鈕才橫向換行，分組標籤獨占一行 */
+  .dispatch-group {
     flex-direction: row;
     flex-wrap: wrap;
+  }
+
+  .dispatch-group-label {
+    width: 100%;
   }
 
   .dispatch-btn {
@@ -1259,20 +1469,21 @@ body {
   padding: 2px 8px;
   font-size: 13px;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .risk-badge.high {
-  color: var(--danger);
+  color: var(--danger-text);
   border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
 .risk-badge.med {
-  color: var(--warn);
+  color: var(--warn-text);
   border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
 .risk-badge.low {
-  color: var(--safe);
+  color: var(--safe-text);
   border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
@@ -1283,56 +1494,12 @@ body {
 }
 
 /* =========================================================
-   地圖容器 z-index 隔離
-   Leaflet 內部會建立大量 z-index，需用 isolation:isolate
-   把它的 stacking context 封在容器內，不讓它蓋過 modal
-   ========================================================= */
-#leafletMap {
-  isolation: isolate;
-  /* 關鍵：建立獨立 stacking context */
-  position: relative;
-  z-index: 0;
-}
-
-/* =========================================================
    Leaflet 地圖自訂樣式（深色主題）
+   今日事件地圖（#todayMap）沒有開 zoomControl，也不使用
+   Leaflet 內建 popup，所以這裡只保留仍在使用的歸屬資訊列樣式
    ========================================================= */
-
-/* 覆蓋 Leaflet 預設 popup 白底 */
-.leaflet-ecare-popup .leaflet-popup-content-wrapper {
-  background: var(--panel);
-  color: var(--text);
-  border: 1px solid var(--border-accent);
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-}
-
-.leaflet-ecare-popup .leaflet-popup-tip {
-  background: var(--panel);
-}
-
-.leaflet-ecare-popup .leaflet-popup-content {
-  margin: 10px 14px;
-}
-
-.leaflet-ecare-popup .leaflet-popup-close-button {
-  color: var(--text-muted) !important;
-}
-
-/* 地圖控制元件深色化 */
-.leaflet-control-zoom a {
-  background: var(--panel) !important;
-  color: var(--text) !important;
-  border-color: var(--border) !important;
-}
-
-.leaflet-control-zoom a:hover {
-  background: var(--panel-2) !important;
-  color: var(--accent) !important;
-}
-
 .leaflet-control-attribution {
-  background: rgba(15, 23, 32, 0.75) !important;
+  background: rgba(var(--panel-rgb), 0.85) !important;
   color: var(--text-dim) !important;
   font-size: 10px !important;
 }
@@ -1481,12 +1648,13 @@ body {
 }
 
 .map-legend-stats {
-  background: rgba(31, 41, 51, 0.92);
+  background: rgba(var(--panel-rgb), 0.92);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 12px 16px;
   backdrop-filter: blur(4px);
   min-width: 160px;
+  box-shadow: var(--shadow);
 }
 
 /* 標題列：「今日案件」+ 總數 */
@@ -1497,6 +1665,31 @@ body {
   margin-bottom: 10px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  gap: 6px;
+}
+
+/* 收合狀態：只留標題列，統計明細與日期整個收起，避免案件一多就擋住南部海岸線的標記 */
+.mls-chev {
+  font-size: 11px;
+  color: var(--text-dim);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.map-legend-stats.collapsed .mls-header {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.map-legend-stats.collapsed .mls-chev {
+  transform: rotate(-90deg);
+}
+
+.map-legend-stats.collapsed .mls-body {
+  display: none;
 }
 
 .mls-title {
@@ -1512,6 +1705,7 @@ body {
   font-weight: 700;
   color: var(--text);
   line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 /* 每列：圓點 + 標籤 + 數字 */
@@ -1542,6 +1736,7 @@ body {
   color: var(--text);
   min-width: 16px;
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 /* 圓點（共用圖例 .legend-dot，新增此區塊以防樣式被移除） */
@@ -1579,7 +1774,7 @@ body {
   right: 16px;
   width: 220px;
   max-height: calc(100% - 32px);
-  background: rgba(31, 41, 51, 0.95);
+  background: rgba(var(--panel-rgb), 0.95);
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-hover);
@@ -1663,7 +1858,7 @@ body {
 /* 懸浮地名提示 */
 .map-hover-tooltip {
   position: absolute;
-  background: rgba(15, 23, 32, 0.92);
+  background: rgba(var(--panel-rgb), 0.95);
   border: 1px solid var(--border-accent);
   color: var(--text);
   font-size: 13px;
@@ -1673,7 +1868,7 @@ body {
   pointer-events: none;
   z-index: 1100;
   white-space: nowrap;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  box-shadow: 0 2px 8px rgba(23,43,58,0.18);
   backdrop-filter: blur(4px);
 }
 
@@ -1824,6 +2019,40 @@ body {
   margin: 0;
 }
 
+.history-title-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* 「檢視統計」佔位按鈕：熱點分析圖表尚未實作，先預留入口 */
+.btn-view-stats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 12px;
+  color: var(--text-muted);
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.btn-view-stats svg {
+  width: 14px;
+  height: 14px;
+}
+
+.btn-view-stats:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-glow);
+}
+
 .history-header {
   display: flex;
   align-items: flex-start;
@@ -1880,17 +2109,17 @@ body {
 
 .hdb.danger {
   background: rgba(239, 68, 68, 0.15);
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 .hdb.warn {
   background: rgba(245, 158, 11, 0.15);
-  color: var(--warn);
+  color: var(--warn-text);
 }
 
 .hdb.safe {
   background: rgba(16, 185, 129, 0.15);
-  color: var(--safe);
+  color: var(--safe-text);
 }
 
 .hdb.neutral {
@@ -1960,84 +2189,7 @@ body {
 .officer-btn.safe:hover {
   background: rgba(16, 185, 129, 0.15);
   border-color: var(--safe);
-  color: var(--safe);
-}
-
-/* Leaflet 深色主題（共用） */
-#leafletMap {
-  isolation: isolate;
-  position: relative;
-  z-index: 0;
-}
-
-.leaflet-ecare-popup .leaflet-popup-content-wrapper {
-  background: var(--panel);
-  color: var(--text);
-  border: 1px solid var(--border-accent);
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-}
-
-.leaflet-ecare-popup .leaflet-popup-tip {
-  background: var(--panel);
-}
-
-.leaflet-ecare-popup .leaflet-popup-content {
-  margin: 10px 14px;
-}
-
-.leaflet-control-zoom a {
-  background: var(--panel) !important;
-  color: var(--text) !important;
-  border-color: var(--border) !important;
-}
-
-.leaflet-control-zoom a:hover {
-  background: var(--panel-2) !important;
-  color: var(--accent) !important;
-}
-
-.leaflet-control-attribution {
-  background: rgba(15, 23, 32, 0.75) !important;
-  color: var(--text-dim) !important;
-  font-size: 10px !important;
-}
-
-.leaflet-control-attribution a {
-  color: var(--text-dim) !important;
-}
-
-/* Modal z-index（高於地圖） */
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(4px);
-  z-index: 10000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  animation: fadeIn 0.2s ease;
-  pointer-events: all;
-}
-
-.modal-backdrop.hidden {
-  display: none;
-  pointer-events: none;
-}
-
-.modal {
-  background: var(--panel);
-  border: 1px solid var(--border-accent);
-  border-radius: var(--radius-lg);
-  padding: 28px;
-  width: min(480px, 90vw);
-  max-height: 85vh;
-  overflow-y: auto;
-  box-shadow: var(--shadow-hover);
-  position: relative;
-  z-index: 10001;
-  pointer-events: all;
+  color: var(--safe-text);
 }
 
 /* date input 深色 */
@@ -2052,7 +2204,7 @@ input[type="date"].modal-input {
   position: absolute;
   top: 16px;
   left: 16px;
-  bottom: 220px;      /* 統計面板(~186px) + 距底8px + ~26px間距 */
+  bottom: 200px;      /* 預設值，JS 會在面板顯示時依左下統計卡實際高度覆寫此值 */
   width: 256px;
   background: var(--panel);
   border: 1px solid rgba(59, 130, 246, 0.40);
@@ -2077,7 +2229,7 @@ input[type="date"].modal-input {
 .police-panel-title {
   font-size: 12px;
   font-weight: 700;
-  color: #93c5fd;
+  color: var(--police-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2166,7 +2318,7 @@ input[type="date"].modal-input {
   line-height: 1;
   user-select: none;
 }
-.pp-chev.open { transform: rotate(90deg); color: #93c5fd; }
+.pp-chev.open { transform: rotate(90deg); color: var(--police-text); }
 .pp-chev-placeholder { width: 18px; flex-shrink: 0; }
 
 /* ── 派出所列表（可展開區域） ───────────────────────────── */
@@ -2280,10 +2432,9 @@ input[type="date"].modal-input {
     font-size: 9px;
   }
 
-  /* 地圖浮動面板縮小 */
+  /* 地圖浮動面板縮小（bottom 由 JS 依實際統計卡高度覆寫） */
   .police-panel {
     width: 210px;
-    bottom: 220px;  /* 統計面板高度不變，間距維持 */
   }
 
   .county-panel {
@@ -2387,12 +2538,11 @@ input[type="date"].modal-input {
     gap: 4px;
   }
 
-  /* ── 地圖頁面面板：大幅縮小 ── */
+  /* ── 地圖頁面面板：大幅縮小（bottom 由 JS 依實際統計卡高度覆寫） ── */
   .police-panel {
     width: 155px;
     top: 10px;
     left: 8px;
-    bottom: 168px;  /* 縮小後統計面板約150px + 距底4px + 14px間距 */
   }
 
   .police-panel-title {

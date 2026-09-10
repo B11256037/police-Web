@@ -4,10 +4,23 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>E-CARE：緊急報案系統</title>
+  <!-- 在 CSS 套用前先讀取先前存的主題選擇，避免切成深色模式時先閃一下亮色再變暗 -->
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem('ecare_theme');
+        if (saved === 'light' || saved === 'dark') {
+          document.documentElement.setAttribute('data-theme', saved);
+        }
+      } catch (e) {}
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="Style.css"/>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css"/>
 </head>
 <body>
 
@@ -19,6 +32,10 @@
         <h1>E-CARE：緊急報案系統</h1>
       </div>
       <div class="header-controls">
+        <button class="theme-toggle" id="themeToggle" aria-label="切換亮色/深色主題">
+          <span class="theme-toggle-icon" id="themeToggleIcon"></span>
+          <span class="theme-toggle-label" id="themeToggleLabel">深色模式</span>
+        </button>
         <button class="sound-toggle" id="soundToggle" aria-label="音效開關">
           <span class="sound-icon"></span>
           <span class="sound-label">音效：開啟</span>
@@ -96,18 +113,21 @@
       <div class="police-panel-body" id="policePanelBody"></div>
     </div>
 
-    <!-- 左下：整合圖例 + 今日案件統計 -->
+    <!-- 左下：整合圖例 + 今日案件統計（可收合，避免案件多時擋住地圖） -->
     <div class="map-bottom-left">
-      <div class="map-legend-stats">
-        <div class="mls-header">
+      <div class="map-legend-stats" id="mapLegendStats">
+        <div class="mls-header" id="mlsToggle" role="button" tabindex="0" aria-expanded="true" aria-label="展開/收合今日案件統計">
           <span class="mls-title">今日案件</span>
           <span class="mls-total" id="mtsTotal">0</span>
+          <span class="mls-chev" id="mlsChev" aria-hidden="true">▾</span>
         </div>
-        <div class="mls-row"><span class="legend-dot danger"></span><span class="mls-label">高風險</span><span class="mls-val" id="mtsDanger">0</span></div>
-        <div class="mls-row"><span class="legend-dot warn"></span><span class="mls-label">中風險</span><span class="mls-val" id="mtsWarn">0</span></div>
-        <div class="mls-row"><span class="legend-dot safe"></span><span class="mls-label">低風險</span><span class="mls-val" id="mtsSafe">0</span></div>
-        <div class="mls-row mls-row--inactive"><span class="legend-dot inactive"></span><span class="mls-label">已結案</span></div>
-        <div class="mts-date" id="mtsDate"></div>
+        <div class="mls-body" id="mlsBody">
+          <div class="mls-row"><span class="legend-dot danger"></span><span class="mls-label">高風險</span><span class="mls-val" id="mtsDanger">0</span></div>
+          <div class="mls-row"><span class="legend-dot warn"></span><span class="mls-label">中風險</span><span class="mls-val" id="mtsWarn">0</span></div>
+          <div class="mls-row"><span class="legend-dot safe"></span><span class="mls-label">低風險</span><span class="mls-val" id="mtsSafe">0</span></div>
+          <div class="mls-row mls-row--inactive"><span class="legend-dot inactive"></span><span class="mls-label">已結案</span></div>
+          <div class="mts-date" id="mtsDate"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -149,18 +169,27 @@
         </div>
       </section>
 
-      <!-- 右欄：派遣方式 -->
+      <!-- 右欄：派遣方式（依視覺權重分組：主動作／次要操作／結案／誤報獨立隔開，避免情急誤點） -->
       <aside class="dispatch-panel" aria-label="派遣操作">
         <div class="panel-header">派遣方式</div>
         <div class="dispatch-buttons">
-          <button class="dispatch-btn police"    onclick="handleDispatch('police',    ' 派遣警力')"   aria-label="派遣警力"><span class="btn-icon"></span>派遣警力</button>
-          <button class="dispatch-btn ambulance" onclick="handleDispatch('ambulance', ' 派遣救護')"   aria-label="派遣救護"><span class="btn-icon"></span>派遣救護</button>
-          <button class="dispatch-btn fire"      onclick="handleDispatch('fire',      ' 消防派遣')"   aria-label="消防派遣"><span class="btn-icon"></span>消防派遣</button>
-          <button class="dispatch-btn phone"     onclick="handleDispatch('phone',     ' 回撥報案人')" aria-label="回撥報案人"><span class="btn-icon"></span>回撥報案人</button>
-          <hr style="border:none;border-top:1px solid var(--border);margin:4px 0;"/>
-          <button class="dispatch-btn close"     onclick="handleDispatch('close',     ' 已結案')"     aria-label="已結案"><span class="btn-icon"></span>已結案</button>
-          <button class="dispatch-btn misreport" onclick="handleDispatch('misreport', ' 標記誤報')"   aria-label="標記誤報"><span class="btn-icon"></span>標記誤報</button>
-          <button class="dispatch-btn manual"    onclick="handleDispatch('manual',    ' 轉人工')"     aria-label="轉人工處理"><span class="btn-icon"></span>轉人工</button>
+          <div class="dispatch-group">
+            <div class="dispatch-group-label">立即派遣</div>
+            <button class="dispatch-btn police"    onclick="handleDispatch('police',    ' 警力派遣')"   aria-label="警力派遣"><span class="btn-icon"></span>警力派遣</button>
+            <button class="dispatch-btn ambulance" onclick="handleDispatch('ambulance', ' 救護派遣')"   aria-label="救護派遣"><span class="btn-icon"></span>救護派遣</button>
+            <button class="dispatch-btn fire"      onclick="handleDispatch('fire',      ' 消防派遣')"   aria-label="消防派遣"><span class="btn-icon"></span>消防派遣</button>
+          </div>
+
+          <div class="dispatch-group">
+            <div class="dispatch-group-label">結案</div>
+            <button class="dispatch-btn close" onclick="handleDispatch('close', ' 已結案')" aria-label="已結案"><span class="btn-icon"></span>已結案</button>
+          </div>
+
+          <!-- 標記誤報：破壞性且較少用的操作，故意拉開距離、弱化視覺權重，避免跟上方派遣警力誤觸 -->
+          <div class="dispatch-group dispatch-group--danger">
+            <div class="dispatch-group-label">誤報</div>
+            <button class="dispatch-btn misreport" onclick="handleDispatch('misreport', ' 標記誤報')" aria-label="標記誤報"><span class="btn-icon"></span>標記誤報</button>
+          </div>
         </div>
       </aside>
     </main>
@@ -172,7 +201,14 @@
   <div class="page-content" id="page-history" style="display:none;">
     <div class="full-page-inner">
       <div class="history-header">
-        <h2 class="section-title">案件歷史紀錄</h2>
+        <div class="history-title-row">
+          <h2 class="section-title">案件歷史紀錄</h2>
+          <!-- 熱點分析尚未接上圖表，先放按鈕佔位，點擊顯示開發中提示 -->
+          <button class="btn-view-stats" onclick="openHistoryStatsPlaceholder()" aria-label="檢視統計">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/></svg>
+            檢視統計
+          </button>
+        </div>
         <div class="history-filters">
           <!-- 日期選擇 -->
           <input type="date" class="modal-input" id="filterDate" onchange="renderHistory()" style="width:150px;"/>
@@ -211,6 +247,11 @@
         <label class="modal-label" id="modalNoteLabel" for="modalNote">操作備註</label>
         <textarea class="modal-textarea" id="modalNote" rows="3" placeholder="請輸入操作備註（選填）"></textarea>
       </div>
+      <!-- 高風險案件的破壞性操作（標記誤報／已結案）二次確認：不勾選無法按確認 -->
+      <label class="modal-confirm-guard hidden" id="modalConfirmGuard" for="modalConfirmCheck">
+        <input type="checkbox" id="modalConfirmCheck"/>
+        <span id="modalConfirmGuardText"></span>
+      </label>
       <div class="modal-actions">
         <button class="btn-cancel" onclick="closeModal()">取消</button>
         <button class="btn-confirm" id="modalConfirmBtn" onclick="confirmModal()">確認</button>
@@ -219,6 +260,7 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
   <script src="county_data.js"></script>
   <script src="town_data.js"></script>
   <script src="police_data(更新版-1).js"></script>

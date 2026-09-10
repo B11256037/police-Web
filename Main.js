@@ -31,6 +31,20 @@ let statsView = 'month';
 let lastIds = new Set();
 
 // ====================================================
+// HTML / JS 字串跳脫（案件欄位含民眾端自由輸入文字，塞進 innerHTML 前必須跳脫）
+// ====================================================
+var _htmlEscapeMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+function escapeHtml(str) {
+  return String(str == null ? '' : str).replace(/[&<>"']/g, function (ch) { return _htmlEscapeMap[ch]; });
+}
+// 用於塞進 onclick="fn('...')" 這種內嵌單引號字串的場合：
+// 先跳脫反斜線/單引號讓 JS 字串不被提早結束，再跳脫 & 和 " 讓屬性本身安全
+function escapeJsAttr(str) {
+  var jsEscaped = String(str == null ? '' : str).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  return jsEscaped.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
+
+// ====================================================
 // API 欄位正規化 - 將後端 raw 資料轉為 UI 統一格式
 // ====================================================
 // 本地地址解析：從已載入的 TOWN_DATA GeoJSON 取得鄉鎮中心點
@@ -127,6 +141,11 @@ function normalizeCase(raw) {
       level === 'High' ? 'danger' :
         level === 'Medium' ? 'warn' : 'safe';
 
+  // App 端 AI 分析資料（情緒分析、通話逐字稿）——後端尚未全面提供，
+  // 用多個可能欄位名稱防呆讀取，沒有資料時保持 null，UI 端會直接不顯示該區塊
+  const emotionAnalysis = raw.emotion_analysis || raw.emotion || raw.sentiment || null;
+  const transcript = raw.transcript || raw.call_transcript || raw.voice_transcript || null;
+
   return {
     id: raw.id,
     code: raw.id ? ('#' + String(raw.id).slice(-4).toUpperCase()) : '#???',
@@ -143,6 +162,8 @@ function normalizeCase(raw) {
     sceneStatus: formatCaseDescription(desc),
     status,
     statusClass: dotClass,
+    emotionAnalysis,
+    transcript,
     lat, lng,
     createdAt,
   };
@@ -202,7 +223,6 @@ async function geocodeAddress(addr) {
       });
       // 立刻重繪今日地圖標記
       if (typeof renderTodayMapDots === 'function') renderTodayMapDots();
-      if (typeof setupMapDots === 'function') setupMapDots();
     } else {
       geocodeCache[clean] = 'failed';
     }
@@ -324,7 +344,6 @@ async function loadCases() {
     processGeocodeQueue();
 
     renderList();
-    setupMapDots();       // 頁面二小地圖（已移除 div，此函式內部會 early return）
     updateHeaderStats();
 
     // ★ 同步更新頁面一今日地圖
@@ -350,8 +369,8 @@ function showApiError() {
   el.id = 'apiErrorBanner';
   el.style.cssText = [
     'position:fixed', 'top:var(--header-h,110px)', 'left:0', 'right:0',
-    'z-index:9500', 'background:rgba(239,68,68,0.12)',
-    'border-bottom:1px solid #ef4444', 'color:#ef4444',
+    'z-index:9500', 'background:rgba(239,68,68,0.14)',
+    'border-bottom:1px solid #ef4444', 'color:var(--danger-text)',
     'text-align:center', 'padding:8px 16px', 'font-size:13px',
   ].join(';');
   el.textContent = '無法連線到後端（' + API_BASE + '），請確認 FastAPI 是否運行中';
@@ -362,9 +381,9 @@ function showApiError() {
 // 初始化
 // ====================================================
 document.addEventListener('DOMContentLoaded', function () {
+  setupThemeToggle();
   setupSoundToggle();
   setupStatsToggle();
-  initLeafletMap();
   renderList();       // 先渲染空列表（顯示「載入中」）
   loadCases();        // 拉取 API
   setInterval(loadCases, POLL_INTERVAL);
@@ -415,9 +434,9 @@ function renderList() {
 
     card.innerHTML =
       '<div class="case-card-top">' +
-      '<span class="case-code">' + c.code + '</span>' +
+      '<span class="case-code">' + escapeHtml(c.code) + '</span>' +
       '<span class="status-dot ' + dotClass + '"></span>' +
-      '<span class="case-type">' + c.type + '</span>' +
+      '<span class="case-type">' + escapeHtml(c.type) + '</span>' +
       '<span class="case-risk">' + c.riskScore + '</span>' +
       '</div>' +
       '<div class="case-card-bottom">' +
@@ -467,7 +486,6 @@ function renderDetail(id) {
   const isInactive = (c.status === '誤報' || c.status === '已處理' || c.status === '已轉人工');
   const rCls = c.riskLevel === 'High' ? 'danger' : c.riskLevel === 'Medium' ? 'warn' : 'safe';
 
-  flyToCase(id);
   updateDispatchButtons(isInactive);
 
   const mapsLink = (c.lat != null && c.lng != null)
@@ -475,37 +493,61 @@ function renderDetail(id) {
     '" target="_blank" rel="noopener" style="font-size:12px;color:var(--accent);white-space:nowrap;text-decoration:none;">Google Maps</a>'
     : '';
 
+  // App 端 AI 語音分析（情緒分析／通話逐字稿）——這是跟傳統電話報案最大的差異化資料，
+  // 只要後端有給任一欄位就顯示，用醒目樣式放在案件分析之前，讓警員第一眼就看到
+  const aiAnalysisHtml = (c.emotionAnalysis || c.transcript)
+    ? '<div class="info-section info-section--ai">' +
+      '<div class="info-section-header">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 10v4M6 6v12M10 3v18M14 6v12M18 10v4M22 8v8"/></svg>' +
+      'AI 語音分析' +
+      '<span class="ai-source-badge">App 端獨有</span>' +
+      '</div>' +
+      '<div class="info-section-body">' +
+      (c.emotionAnalysis
+        ? '<div class="info-row"><span class="info-label">情緒分析：</span><span class="info-value">' + escapeHtml(c.emotionAnalysis) + '</span></div>'
+        : '') +
+      (c.transcript
+        ? '<div class="info-row" style="align-items:flex-start;"><span class="info-label">通話逐字稿：</span>' +
+          '<span class="info-value" style="white-space:pre-wrap;word-break:break-all;">' + escapeHtml(c.transcript) + '</span></div>'
+        : '') +
+      '</div>' +
+      '</div>'
+    : '';
+
   const statusBadgeHtml = (c.status !== '處理中')
     ? '<span class="case-status-badge ' +
     (c.status === '誤報' ? 'misreport' : c.status === '已轉人工' ? 'transferred' : 'handled') +
-    '">' + c.status + '</span>'
+    '">' + escapeHtml(c.status) + '</span>'
     : '';
 
   panel.innerHTML =
     // ---- 標題列 ----
     '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">' +
     '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
-    '<span class="case-code" style="font-size:16px;">' + c.code + '</span>' +
+    '<span class="case-code" style="font-size:16px;">' + escapeHtml(c.code) + '</span>' +
     '<span class="risk-badge ' + rCls + '">風險 ' + c.riskScore + '</span>' +
-    '<span style="font-size:13px;color:var(--text-muted);">' + c.type + '</span>' +
+    '<span style="font-size:13px;color:var(--text-muted);">' + escapeHtml(c.type) + '</span>' +
     statusBadgeHtml +
     '</div>' +
     '<div class="detail-actions">' +
-    '<button class="btn-detail-action" onclick="openEditModal(\'' + c.id + '\')" aria-label="修改案件">修改</button>' +
-    '<button class="btn-detail-action danger-btn" onclick="confirmDelete(\'' + c.id + '\')" aria-label="刪除案件">刪除</button>' +
+    '<button class="btn-detail-action" onclick="openEditModal(\'' + escapeJsAttr(c.id) + '\')" aria-label="修改案件">修改</button>' +
+    '<button class="btn-detail-action danger-btn" onclick="confirmDelete(\'' + escapeJsAttr(c.id) + '\')" aria-label="刪除案件">刪除</button>' +
     '</div>' +
     '</div>' +
 
     // ---- 地址 ----
     '<div class="address-field">' +
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>' +
-    '<span style="flex:1;">' + c.address + '</span>' +
+    '<span style="flex:1;">' + escapeHtml(c.address) + '</span>' +
     mapsLink +
     '</div>' +
 
     // ---- 建立時間 ----
     '<div style="font-size:12px;color:var(--text-dim);padding:0 4px;">建立時間：' +
     c.createdAt.toLocaleString('zh-TW') + '</div>' +
+
+    // ---- AI 語音分析（有資料才顯示，放在案件分析之前，是本系統的差異化重點） ----
+    aiAnalysisHtml +
 
     // ---- 案件分析 ----
     '<div class="info-section">' +
@@ -517,7 +559,7 @@ function renderDetail(id) {
     '<div class="info-row"><span class="info-label">分級：</span><span class="info-value ' + rCls + '">' + c.level + '</span></div>' +
     '<div class="info-row"><span class="info-label">危險程度：</span><span class="info-value ' + rCls + '">' + c.dangerLevel + '</span></div>' +
     '<div class="info-row"><span class="info-label">風險分數：</span><span class="info-value">' + (c.rawScore.toFixed ? c.rawScore.toFixed(4) : c.rawScore) + '</span></div>' +
-    '<div class="info-row"><span class="info-label">AI 建議：</span><span class="info-value">' + c.aiSuggestion + '</span></div>' +
+    '<div class="info-row"><span class="info-label">AI 建議：</span><span class="info-value">' + escapeHtml(c.aiSuggestion) + '</span></div>' +
     '</div>' +
     '</div>' +
 
@@ -528,10 +570,10 @@ function renderDetail(id) {
     '案件摘要' +
     '</div>' +
     '<div class="info-section-body">' +
-    '<div class="info-row"><span class="info-label">事件類型：</span><span class="info-value">' + c.eventType + '</span></div>' +
-    '<div class="info-row"><span class="info-label">處理狀態：</span><span class="info-value">' + c.status + '</span></div>' +
+    '<div class="info-row"><span class="info-label">事件類型：</span><span class="info-value">' + escapeHtml(c.eventType) + '</span></div>' +
+    '<div class="info-row"><span class="info-label">處理狀態：</span><span class="info-value">' + escapeHtml(c.status) + '</span></div>' +
     '<div class="info-row" style="align-items:flex-start;"><span class="info-label">案件描述：</span>' +
-    '<span class="info-value" style="white-space:pre-wrap;word-break:break-all;">' + c.sceneStatus + '</span></div>' +
+    '<span class="info-value" style="white-space:pre-wrap;word-break:break-all;">' + escapeHtml(c.sceneStatus) + '</span></div>' +
     '</div>' +
     '</div>' +
 
@@ -583,10 +625,13 @@ function patchDetailTexts(id) {
     if (key === '案件描述：' && value.textContent !== c.sceneStatus) {
       value.textContent = c.sceneStatus;
     }
+    if (key === '情緒分析：' && c.emotionAnalysis && value.textContent !== c.emotionAnalysis) {
+      value.textContent = c.emotionAnalysis;
+    }
+    if (key === '通話逐字稿：' && c.transcript && value.textContent !== c.transcript) {
+      value.textContent = c.transcript;
+    }
   });
-
-  // 更新地圖標記顏色（若狀態改變）但不 flyTo
-  setupMapDots();
 }
 function updateDispatchButtons(disabled) {
   document.querySelectorAll('.dispatch-btn').forEach(function (btn) {
@@ -641,6 +686,9 @@ function handleDispatch(op, label) {
       title: '標記誤報',
       subtitle: '確定將案件 ' + c.code + '（' + c.type + '）標記為誤報？',
       confirmText: '確認誤報', confirmClass: 'danger', showNote: true,
+      requireConfirmText: c.riskLevel === 'High'
+        ? '此為高風險案件，我確認這是誤報，不是漏判'
+        : null,
       onConfirm: function (note) {
         applyLocalStatus(c.id, '誤報', note);
         addLog('標記誤報', note);
@@ -656,6 +704,9 @@ function handleDispatch(op, label) {
       title: '已結案',
       subtitle: '確定將案件 ' + c.code + '（' + c.type + '）標記為已結案？結案後將從今日地圖移除。',
       confirmText: '確認結案', confirmClass: 'safe', showNote: true,
+      requireConfirmText: c.riskLevel === 'High'
+        ? '此為高風險案件，我確認現場已妥善處理完畢'
+        : null,
       onConfirm: function (note) {
         applyLocalStatus(c.id, '已處理', note);
         addLog('已結案', note);
@@ -725,8 +776,6 @@ function applyLocalStatus(id, status, note) {
 let modalOnConfirm = null;
 
 function openModal(config) {
-  if (leafletMap) { leafletMap.dragging.disable(); leafletMap.scrollWheelZoom.disable(); }
-
   var backdrop = document.getElementById('modalBackdrop');
   var titleEl = document.getElementById('modalTitle');
   var subtitleEl = document.getElementById('modalSubtitle');
@@ -734,6 +783,9 @@ function openModal(config) {
   var noteLblEl = document.getElementById('modalNoteLabel');
   var confirmBtn = document.getElementById('modalConfirmBtn');
   var extraEl = document.getElementById('modalExtraFields');
+  var guardEl = document.getElementById('modalConfirmGuard');
+  var guardTextEl = document.getElementById('modalConfirmGuardText');
+  var guardCheckEl = document.getElementById('modalConfirmCheck');
 
   titleEl.textContent = config.title || '確認操作';
   subtitleEl.textContent = config.subtitle || '';
@@ -746,6 +798,21 @@ function openModal(config) {
   confirmBtn.className = 'btn-confirm' + (config.confirmClass ? ' ' + config.confirmClass : '');
   modalOnConfirm = config.onConfirm || null;
 
+  // 高風險案件的破壞性操作：需勾選確認框才能按下確認鍵，避免手滑誤觸
+  if (guardEl && guardTextEl && guardCheckEl) {
+    if (config.requireConfirmText) {
+      guardEl.classList.remove('hidden');
+      guardTextEl.textContent = config.requireConfirmText;
+      guardCheckEl.checked = false;
+      confirmBtn.disabled = true;
+      guardCheckEl.onchange = function () { confirmBtn.disabled = !guardCheckEl.checked; };
+    } else {
+      guardEl.classList.add('hidden');
+      guardCheckEl.onchange = null;
+      confirmBtn.disabled = false;
+    }
+  }
+
   backdrop.classList.remove('hidden');
   setTimeout(function () {
     var first = backdrop.querySelector('input, textarea, select');
@@ -756,7 +823,6 @@ function openModal(config) {
 function closeModal() {
   document.getElementById('modalBackdrop').classList.add('hidden');
   modalOnConfirm = null;
-  if (leafletMap) { leafletMap.dragging.enable(); leafletMap.scrollWheelZoom.enable(); }
 }
 
 function confirmModal() {
@@ -779,9 +845,9 @@ function openEditModal(id) {
     confirmText: '儲存', showNote: false,
     extraFields:
       '<div class="modal-field"><label class="modal-label">案件描述</label>' +
-      '<textarea class="modal-textarea" id="ef-scene" rows="4">' + c.sceneStatus + '</textarea></div>' +
+      '<textarea class="modal-textarea" id="ef-scene" rows="4">' + escapeHtml(c.sceneStatus) + '</textarea></div>' +
       '<div class="modal-field"><label class="modal-label">AI 建議</label>' +
-      '<input class="modal-input" id="ef-ai" value="' + c.aiSuggestion + '"/></div>',
+      '<input class="modal-input" id="ef-ai" value="' + escapeHtml(c.aiSuggestion) + '"/></div>',
     onConfirm: function () {
       var scene = (document.getElementById('ef-scene') || {}).value;
       var ai = (document.getElementById('ef-ai') || {}).value;
@@ -808,7 +874,7 @@ function confirmDelete(id) {
       cases = cases.filter(function (x) { return x.id !== id; });
       delete localChanges[id];
       selectedCaseId = null;
-      renderList(); setupMapDots();
+      renderList();
       if (typeof renderTodayMapDots === 'function') renderTodayMapDots();
       var panel = document.getElementById('detailContent');
       if (panel) panel.innerHTML =
@@ -827,6 +893,35 @@ function confirmDelete(id) {
 // ====================================================
 // 音效開關
 // ====================================================
+// ====================================================
+// 亮/暗主題切換
+// ====================================================
+function _currentTheme() {
+  var explicit = document.documentElement.getAttribute('data-theme');
+  if (explicit) return explicit;
+  return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+}
+
+function setupThemeToggle() {
+  var btn = document.getElementById('themeToggle');
+  var icon = document.getElementById('themeToggleIcon');
+  var label = document.getElementById('themeToggleLabel');
+  if (!btn) return;
+
+  function updateLabel() {
+    var isDark = _currentTheme() === 'dark';
+    if (label) label.textContent = isDark ? '淺色模式' : '深色模式';
+  }
+  updateLabel();
+
+  btn.addEventListener('click', function () {
+    var next = _currentTheme() === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('ecare_theme', next); } catch (e) {}
+    updateLabel();
+  });
+}
+
 function setupSoundToggle() {
   var btn = document.getElementById('soundToggle');
   if (!btn) return;
@@ -925,105 +1020,6 @@ function buildPieSVG(segments, r) {
     currentAngle += angle;
   });
   return '<svg width="' + cx * 2 + '" height="' + cy * 2 + '" viewBox="0 0 ' + cx * 2 + ' ' + cy * 2 + '">' + paths + '</svg>';
-}
-
-// ====================================================
-// Leaflet 地圖
-// ====================================================
-var leafletMap = null;
-var leafletMarkers = {};
-
-var markerColors = { danger: '#ef4444', warn: '#f59e0b', safe: '#10b981', inactive: '#6b7280' };
-
-function makeCircleIcon(color) {
-  return L.divIcon({
-    className: '',
-    html: '<div style="width:14px;height:14px;border-radius:50%;background:' + color +
-      ';border:2px solid rgba(255,255,255,0.85);box-shadow:0 0 8px ' + color + ';"></div>',
-    iconSize: [14, 14], iconAnchor: [7, 7], popupAnchor: [0, -10],
-  });
-}
-
-function initLeafletMap() {
-  var container = document.getElementById('leafletMap');
-  if (!container || leafletMap) return;
-  var _wb = [[-85.05112878, -180], [85.05112878, 180]];
-  leafletMap = L.map('leafletMap', {
-    center: [23.9, 121.0],
-    zoom: 7,
-    minZoom: 2,
-    maxZoom: 19,
-    worldCopyJump: false,
-    maxBounds: _wb,
-    maxBoundsViscosity: 1.0
-  });
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    subdomains: 'abc',
-    maxZoom: 19,
-    maxNativeZoom: 19,
-    noWrap: true,
-    bounds: _wb
-  }).addTo(leafletMap);
-}
-
-function setupMapDots() {
-  if (!leafletMap) initLeafletMap();
-  if (!leafletMap) return;
-
-  // 增量更新：只處理新增/消失的案件，不移除全部 marker
-  // 避免每 3 秒輪詢時地圖閃爍抖動
-
-  var currentIds = new Set(cases.map(function (c) { return c.id; }));
-
-  // 1. 移除已不存在的案件 marker
-  Object.keys(leafletMarkers).forEach(function (id) {
-    if (!currentIds.has(id)) {
-      leafletMap.removeLayer(leafletMarkers[id]);
-      delete leafletMarkers[id];
-    }
-  });
-
-  // 2. 新增或更新 marker
-  cases.forEach(function (c) {
-    if (c.lat == null || c.lng == null) return;
-    var isInactive = (c.status === '誤報' || c.status === '已處理');
-    var dotKey = isInactive ? 'inactive' :
-      c.riskLevel === 'High' ? 'danger' : c.riskLevel === 'Medium' ? 'warn' : 'safe';
-    var color = markerColors[dotKey];
-
-    var popupHtml =
-      '<div style="font-family:\'Noto Sans TC\',sans-serif;min-width:160px;">' +
-      '<div style="font-weight:700;font-size:14px;margin-bottom:4px;">' +
-      '<span style="color:' + color + '">' + c.code + '</span> ' + c.type + '</div>' +
-      '<div style="font-size:12px;color:#aaa;margin-bottom:4px;">' + c.address + '</div>' +
-      '<div style="font-size:12px;">風險：<b style="color:' + color + '">' + c.level + '（' + c.riskScore + '）</b></div>' +
-      '<div style="font-size:12px;">狀態：' + c.status + '</div>' +
-      '</div>';
-
-    if (leafletMarkers[c.id]) {
-      // marker 已存在 → 只更新 icon 顏色（狀態改變時）和 popup 文字，不重建
-      leafletMarkers[c.id].setIcon(makeCircleIcon(color));
-      leafletMarkers[c.id].setPopupContent(popupHtml);
-    } else {
-      // 新案件 → 建立 marker
-      var marker = L.marker([c.lat, c.lng], { icon: makeCircleIcon(color) });
-      marker.bindPopup(popupHtml, { className: 'leaflet-ecare-popup' });
-      marker.on('click', (function (caseId, inactive) {
-        return function () { if (!inactive) renderDetail(caseId); };
-      })(c.id, isInactive));
-      marker.addTo(leafletMap);
-      leafletMarkers[c.id] = marker;
-    }
-  });
-}
-
-function flyToCase(id) {
-  var c = cases.find(function (x) { return x.id === id; });
-  if (!c || !leafletMap || c.lat == null || c.lng == null) return;
-  leafletMap.flyTo([c.lat, c.lng], 14, { duration: 1.2 });
-  var marker = leafletMarkers[id];
-  if (marker) setTimeout(function () { marker.openPopup(); }, 1300);
 }
 
 // ====================================================
