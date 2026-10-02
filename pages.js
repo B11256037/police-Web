@@ -289,7 +289,7 @@ function showMapInfoCard(c) {
   // 開啟案件卡時關閉縣市面板，避免右側重疊
   if (typeof closeCountyPanel === 'function') closeCountyPanel();
 
-  var isHandled = (c.status === '誤報' || c.status === '已處理' || c.status === '已轉人工');
+  var isHandled = isClosedStatus(c.status);
   var rCls = c.riskLevel === 'High' ? 'danger' : c.riskLevel === 'Medium' ? 'warn' : 'safe';
   var dotColor = isHandled ? '#6b7280' :
     (c.riskLevel === 'High' ? '#ef4444' : c.riskLevel === 'Medium' ? '#f59e0b' : '#10b981');

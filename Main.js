@@ -44,6 +44,12 @@ function escapeJsAttr(str) {
   return jsEscaped.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 }
 
+// 警方處置後的結案狀態，須與後端 reports.py 的 _POLICE_DISPOSITIONS 保持一致
+var CLOSED_STATUSES = ['已處理', '誤報', '已轉人工'];
+function isClosedStatus(status) {
+  return CLOSED_STATUSES.indexOf(status) !== -1;
+}
+
 // ====================================================
 // API 欄位正規化 - 將後端 raw 資料轉為 UI 統一格式
 // ====================================================
@@ -134,7 +140,7 @@ function normalizeCase(raw) {
   // 本地操作覆寫（例如已標記誤報）
   const local = localChanges[raw.id] || {};
   const status = local.status || raw.status || '處理中';
-  const isInactive = (status === '誤報' || status === '已處理');
+  const isInactive = isClosedStatus(status);
 
   const dotClass =
     isInactive ? 'inactive' :
@@ -324,8 +330,7 @@ async function loadCases() {
       if (!local) return c;
       return {
         ...c, status: local.status || c.status,
-        statusClass: (local.status === '誤報' || local.status === '已處理')
-          ? 'inactive' : c.statusClass
+        statusClass: isClosedStatus(local.status) ? 'inactive' : c.statusClass
       };
     });
 
@@ -411,7 +416,7 @@ function renderList() {
 
   container.innerHTML = '';
   sorted.forEach(function (c) {
-    const isInactive = (c.status === '誤報' || c.status === '已處理');
+    const isInactive = isClosedStatus(c.status);
     const card = document.createElement('div');
     card.className = [
       'case-card',
@@ -483,7 +488,7 @@ function renderDetail(id) {
   const panel = document.getElementById('detailContent');
   if (!panel) return;
 
-  const isInactive = (c.status === '誤報' || c.status === '已處理' || c.status === '已轉人工');
+  const isInactive = isClosedStatus(c.status);
   const rCls = c.riskLevel === 'High' ? 'danger' : c.riskLevel === 'Medium' ? 'warn' : 'safe';
 
   updateDispatchButtons(isInactive);
@@ -677,7 +682,7 @@ function handleDispatch(op, label) {
   if (!selectedCaseId) { showToast('請先選擇一個案件', 'warn'); return; }
   const c = cases.find(function (x) { return x.id === selectedCaseId; });
   if (!c) return;
-  if (c.status === '誤報' || c.status === '已處理') {
+  if (isClosedStatus(c.status)) {
     showToast('此案件已結案，無法執行操作', 'danger'); return;
   }
 
@@ -752,7 +757,7 @@ function applyLocalStatus(id, status, note) {
   const c = cases.find(function (x) { return x.id === id; });
   if (c) {
     c.status = status;
-    c.statusClass = (status === '誤報' || status === '已處理') ? 'inactive' : c.statusClass;
+    c.statusClass = isClosedStatus(status) ? 'inactive' : c.statusClass;
   }
 
   // 同步寫入後端資料庫（POST /reports/{id}/status）
@@ -904,7 +909,6 @@ function _currentTheme() {
 
 function setupThemeToggle() {
   var btn = document.getElementById('themeToggle');
-  var icon = document.getElementById('themeToggleIcon');
   var label = document.getElementById('themeToggleLabel');
   if (!btn) return;
 
