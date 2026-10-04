@@ -198,14 +198,17 @@ function _selectCounty(countyProps, clickedLayer) {
     townLayer.bringToBack();
   }
 
-  // 飛行至縣市範圍（裁切離島，避免高雄市等縣市因東沙島縮太遠）
+  // 飛行至縣市範圍。高雄市（東沙群島、太平島）與宜蘭縣（釣魚台列嶼）範圍遠超出本島，需裁切；
+  // 只裁切跨度超過 2 度的縣市，否則金門、澎湖這類本身就在本島範圍外的縣市會被裁掉
   var _raw = clickedLayer.getBounds();
   var _sw  = _raw.getSouthWest();
   var _ne  = _raw.getNorthEast();
-  var _bounds = L.latLngBounds(
-    [Math.max(_sw.lat, 21.5), Math.max(_sw.lng, 119.5)],
-    [Math.min(_ne.lat, 26.4), Math.min(_ne.lng, 122.5)]
-  );
+  var _bounds = (_ne.lng - _sw.lng > 2 || _ne.lat - _sw.lat > 2)
+    ? L.latLngBounds(
+        [Math.max(_sw.lat, 21.5), Math.max(_sw.lng, 119.5)],
+        [Math.min(_ne.lat, 26.4), Math.min(_ne.lng, 122.5)]
+      )
+    : _raw;
   todayMap.flyToBounds(_bounds, { padding: [40, 40], duration: 0.8, maxZoom: 11 });
 
   _renderCountyPanel(countyProps, townFeatures);

@@ -212,68 +212,29 @@ function _buildBureauIndex(county) {
   var all    = POLICE_STATIONS.filter(function (s) { return _pNorm(s.county) === _pNorm(county); });
   var jurMap = typeof BUREAU_JURISDICTION !== 'undefined' ? (BUREAU_JURISDICTION[county] || {}) : {};
 
-  var bureauSt = all.filter(function (s) { return s.type === '分局'; });
+  // 分組的上層單位通常是分局；沒有分局的縣市（連江縣）上層是警察局本身
+  function findParent(bn) {
+    return all.find(function (b) { return b.name === bn && (b.type === '分局' || b.type === '局'); }) || null;
+  }
 
   // groups: 依 jurMap 順序建立
   var groups = {};
   Object.keys(jurMap).forEach(function (bn) {
-    groups[bn] = {
-      name:      bn,
-      bureau:    bureauSt.find(function (b) { return b.name === bn; }) || null,
-      stations:  [],
-      districts: jurMap[bn] || []
-    };
+    groups[bn] = { name: bn, bureau: findParent(bn), stations: [], districts: jurMap[bn] || [] };
   });
-  // jurMap 以外的分局
-  bureauSt.forEach(function (b) {
-    if (!groups[b.name]) {
+  all.forEach(function (b) {
+    if (b.type === '分局' && !groups[b.name]) {
       groups[b.name] = { name: b.name, bureau: b, stations: [], districts: [] };
     }
   });
 
-  // 指派派出所到分局
-  // 優先順序：① STATION_BUREAU_MAP 明確映射 → ② 地址-鄉鎮匹配（唯一）→ ③ 最近分局（多局共用）
-  var explicitMap = (typeof STATION_BUREAU_MAP !== 'undefined')
-    ? (STATION_BUREAU_MAP[county] || {}) : {};
-
+  // 每個單位的所屬分局直接取自 bureau 欄位（依來源資料的階層順序產生，見 police_data）
   all.forEach(function (s) {
     if (s.type === '局' || s.type === '分局') return;
-
-    // ① 明確映射
-    var explicit = explicitMap[s.name];
-    if (explicit && groups[explicit]) {
-      groups[explicit].stations.push(s);
-      return;
+    if (!groups[s.bureau]) {
+      groups[s.bureau] = { name: s.bureau, bureau: findParent(s.bureau), stations: [], districts: [] };
     }
-
-    // ② 地址-鄉鎮匹配
-    var normAddr = _normTown(s.address || '');
-    var matchBureaus = Object.keys(jurMap).filter(function (bn) {
-      if (!groups[bn]) return false;
-      return (jurMap[bn] || []).some(function (d) {
-        return normAddr.includes(_normTown(d));
-      });
-    });
-
-    if (!matchBureaus.length) {
-      if (!groups['_other']) groups['_other'] = { name: '_other', bureau: null, stations: [], districts: [] };
-      groups['_other'].stations.push(s);
-      return;
-    }
-
-    var targetBureau = matchBureaus[0];
-    // ③ 多局共用 → 取最近分局
-    if (matchBureaus.length > 1 && s.lat && s.lng) {
-      var bestDist = Infinity;
-      matchBureaus.forEach(function (bn) {
-        var b = groups[bn].bureau;
-        if (b && b.lat && b.lng) {
-          var d = (s.lat - b.lat) * (s.lat - b.lat) + (s.lng - b.lng) * (s.lng - b.lng);
-          if (d < bestDist) { bestDist = d; targetBureau = bn; }
-        }
-      });
-    }
-    groups[targetBureau].stations.push(s);
+    groups[s.bureau].stations.push(s);
   });
 
   // ── 合併共用管轄鄉鎮的分局 ──────────────────────────────
@@ -306,7 +267,7 @@ function _buildBureauIndex(county) {
   });
 
   // Step 3: 依 groups 原始順序建立 _bureauIndex，合併組放在最先出現位置
-  var allGroupKeys = Object.keys(groups).filter(function (k) { return k !== '_other'; });
+  var allGroupKeys = Object.keys(groups);
   var processed = {};
 
   allGroupKeys.forEach(function (bn) {
@@ -350,8 +311,6 @@ function _buildBureauIndex(county) {
       });
     }
   });
-
-  if (groups['_other']) _bureauIndex.push(groups['_other']);
 }
 
 // ============================================================
@@ -376,22 +335,23 @@ function _buildPanelHTML(county) {
 
   // 2. 分局群組（以 _bureauIndex 的數字索引為 id）
   _bureauIndex.forEach(function (g, idx) {
-    if (g.name === '_other') return;
     var gid   = 'ppg_' + idx;
     var hint  = g.districts.join('、');
     var hasSub = g.stations.length > 0;
+    // 沒有分局的縣市（連江縣），單位直接隸屬警察局
+    var isDirect = !!(g.bureau && g.bureau.type === '局');
 
     // 合併組：各分局名稱分行顯示；單一組：直接顯示名稱
     var nameHtml = (g.merged && g.bureauList)
       ? g.bureauList.map(function (bl) {
           return '<span class="pp-name">' + bl.name + '</span>';
         }).join('')
-      : '<span class="pp-name">' + g.name + '</span>';
+      : '<span class="pp-name">' + (isDirect ? '警察局直屬單位' : g.name) + '</span>';
 
     html +=
       '<div class="pp-bureau-group">' +
         '<div class="pp-bureau-hd" data-stype="bureau" data-bidx="' + idx + '" data-bname="' + _esc(g.name) + '">' +
-          '<span class="pp-badge pp-bureau">分</span>' +
+          (isDirect ? '<span class="pp-badge pp-hq">局</span>' : '<span class="pp-badge pp-bureau">分</span>') +
           '<div class="pp-bureau-info">' +
             nameHtml +
             (hint ? '<span class="pp-hint">' + hint + '</span>' : '') +
@@ -418,28 +378,6 @@ function _buildPanelHTML(county) {
           : '') +
       '</div>';
   });
-
-  // 3. 其他群組
-  var other = _bureauIndex.find(function (g) { return g.name === '_other'; });
-  if (other && other.stations.length) {
-    var gid = 'ppg_other';
-    html +=
-      '<div class="pp-bureau-group">' +
-        '<div class="pp-bureau-hd" data-stype="other-hd">' +
-          '<span class="pp-badge pp-station">他</span>' +
-          '<div class="pp-bureau-info"><span class="pp-name">其他單位</span></div>' +
-          '<span class="pp-chev" id="' + gid + '_c">›</span>' +
-        '</div>' +
-        '<div class="pp-collapse hidden" id="' + gid + '">' +
-          other.stations.map(function (s) {
-            return '<div class="pp-station-item" data-stype="station" data-sname="' + _esc(s.name) + '">' +
-              '<span class="pp-badge pp-station">' + (s.type || '?').charAt(0) + '</span>' +
-              '<span class="pp-name">' + s.name + '</span>' +
-              '</div>';
-          }).join('') +
-        '</div>' +
-      '</div>';
-  }
 
   return html || '<div class="pp-empty">無警察局所資料</div>';
 }
@@ -472,7 +410,6 @@ function _initPolicePanelEvents() {
     if (!county) return;
 
     var bureauHd = e.target.closest('[data-stype="bureau"]');
-    var otherHd  = e.target.closest('[data-stype="other-hd"]');
     var hqItem   = e.target.closest('[data-stype="hq"]');
     var stItem   = e.target.closest('[data-stype="station"]');
 
@@ -493,8 +430,6 @@ function _initPolicePanelEvents() {
       }
       return;
     }
-
-    if (otherHd) { _toggleCollapse('ppg_other'); return; }
 
     if (hqItem) {
       var s = _findStation(county, hqItem.dataset.sname);
@@ -571,7 +506,95 @@ function _syncPolicePanelBottom() {
 // ============================================================
 // 初始化
 // ============================================================
+// 案件負責單位推估
+// 政府沒有公開派出所轄區邊界，因此以「案件所在鄉鎮內最近的單位」推估；
+// 該鄉鎮沒有任何單位時，改取同縣市最近的單位
+// ============================================================
+var _townIndex = null;   // [{ county, town, key, bbox, geom }]
+var _unitTownKey = {};   // 單位索引 → 所在鄉鎮 key（依座標判斷，比地址可靠）
+var _responsibleCache = {};
+
+function _ringHas(ring, x, y) {
+  var inside = false;
+  for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    var xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+function _geomHas(geom, x, y) {
+  var polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
+  return polys.some(function (p) {
+    return _ringHas(p[0], x, y) && !p.slice(1).some(function (hole) { return _ringHas(hole, x, y); });
+  });
+}
+
+function _buildTownIndex() {
+  if (_townIndex || typeof TOWN_DATA === 'undefined') return;
+  _townIndex = TOWN_DATA.features.map(function (f) {
+    var b = [Infinity, Infinity, -Infinity, -Infinity];
+    (function walk(c) {
+      if (typeof c[0] === 'number') {
+        if (c[0] < b[0]) b[0] = c[0]; if (c[1] < b[1]) b[1] = c[1];
+        if (c[0] > b[2]) b[2] = c[0]; if (c[1] > b[3]) b[3] = c[1];
+      } else c.forEach(walk);
+    })(f.geometry.coordinates);
+    var county = _pNorm(f.properties.COUNTYNAME), town = _pNorm(f.properties.TOWNNAME);
+    return { county: county, town: town, key: county + town, bbox: b, geom: f.geometry };
+  });
+}
+
+function _townAt(lat, lng) {
+  for (var i = 0; i < _townIndex.length; i++) {
+    var t = _townIndex[i], b = t.bbox;
+    if (lng >= b[0] && lng <= b[2] && lat >= b[1] && lat <= b[3] && _geomHas(t.geom, lng, lat)) return t;
+  }
+  return null;
+}
+
+// 短距離用等距長方投影近似：經度差乘上 cos(緯度) 修正
+function _distKm(lat1, lng1, lat2, lng2) {
+  var dy = (lat2 - lat1) * 111.0;
+  var dx = (lng2 - lng1) * 111.0 * Math.cos((lat1 + lat2) / 2 * Math.PI / 180);
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function findResponsibleUnit(lat, lng) {
+  if (typeof lat !== 'number' || typeof lng !== 'number' || typeof POLICE_STATIONS === 'undefined') return null;
+  var cacheKey = lat.toFixed(5) + ',' + lng.toFixed(5);
+  if (cacheKey in _responsibleCache) return _responsibleCache[cacheKey];
+
+  _buildTownIndex();
+  var town = _townIndex && _townAt(lat, lng);
+  var result = null;
+  if (town) {
+    var units = [];
+    POLICE_STATIONS.forEach(function (s, i) {
+      if (!s.bureau || _pNorm(s.county) !== town.county) return;
+      if (!(i in _unitTownKey)) { var t = _townAt(s.lat, s.lng); _unitTownKey[i] = t ? t.key : null; }
+      units.push({ s: s, key: _unitTownKey[i] });
+    });
+    var inTown = units.filter(function (u) { return u.key === town.key; });
+    var pool = inTown.length ? inTown : units;
+    var best = null, bestKm = Infinity;
+    pool.forEach(function (u) {
+      var km = _distKm(lat, lng, u.s.lat, u.s.lng);
+      if (km < bestKm) { bestKm = km; best = u.s; }
+    });
+    if (best) {
+      result = { bureau: best.bureau, unit: best.name, km: Math.round(bestKm * 10) / 10,
+                 town: town.county + town.town, sameTown: inTown.length > 0 };
+    }
+  }
+  _responsibleCache[cacheKey] = result;
+  return result;
+}
+
+// ============================================================
 document.addEventListener('DOMContentLoaded', function () {
   _initPolicePanelEvents();
+  // 預先建立鄉鎮索引（約 0.5 秒），避免第一次點開案件時卡頓
+  setTimeout(_buildTownIndex, 1500);
   window.addEventListener('resize', _syncPolicePanelBottom);
 });

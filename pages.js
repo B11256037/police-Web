@@ -300,6 +300,8 @@ function showMapInfoCard(c) {
     ? 'color:var(--safe-text);background:rgba(16,185,129,0.12);'
     : 'color:var(--danger-text);background:rgba(239,68,68,0.12);';
 
+  var unit = getResponsibleUnit(c);
+
   body.innerHTML =
     // 頂部色條
     '<div style="height:4px;background:' + dotColor + ';border-radius:4px 4px 0 0;margin:-16px -16px 14px;"></div>' +
@@ -323,6 +325,11 @@ function showMapInfoCard(c) {
     '<div class="mc-row" style="align-items:flex-start;"><span class="mc-label">地點</span>' +
     '<span style="flex:1;word-break:break-all;font-size:12px;">' + escapeHtml(c.address) + '</span>' +
     '</div>' +
+    (unit
+      ? '<div class="mc-row" style="align-items:flex-start;"><span class="mc-label">負責</span>' +
+        '<span style="flex:1;font-size:12px;"><b>' + escapeHtml(unit.bureau) + '</b>　' + escapeHtml(unit.unit) +
+        '<br><span style="color:var(--text-dim);">推估・距案件約 ' + unit.km + ' 公里</span></span></div>'
+      : '') +
     (c.lat != null && c.lng != null
       ? '<div class="mc-row"><span class="mc-label">座標</span><span style="font-size:12px;">' +
         c.lat.toFixed(6) + ', ' + c.lng.toFixed(6) + '</span></div>'
@@ -552,7 +559,7 @@ function renderHistory() {
       var sBadge = c.status === '誤報' ? '<span class="case-status-badge misreport">誤報</span>' :
         c.status === '已處理' ? '<span class="case-status-badge handled">已處理</span>' :
           c.status === '已轉人工' ? '<span class="case-status-badge transferred">已轉人工</span>' :
-            c.status;
+            escapeHtml(c.status);
       var addr = String(c.address || '');
       var addrShort = addr.length > 22 ? addr.slice(0, 22) + '…' : addr;
       var createdStr = c.createdAt

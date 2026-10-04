@@ -26,9 +26,9 @@ let localChanges = (function () {   // { id: { status } } 本地操作覆寫，�
 })();
 let logs = [];   // 操作日誌
 let selectedCaseId = null;
-let soundEnabled = true;
 let statsView = 'month';
 let lastIds = new Set();
+let hasLoadedCases = false;   // 第一次成功取得資料前顯示「載入中」，之後空列表代表今日沒有案件
 
 // ====================================================
 // HTML / JS 字串跳脫（案件欄位含民眾端自由輸入文字，塞進 innerHTML 前必須跳脫）
@@ -104,12 +104,10 @@ function normalizeCase(raw) {
   const rawScore = typeof raw.risk_score === 'number' ? raw.risk_score : 0;
   const riskScore = rawScore <= 1 ? Math.round(rawScore * 100) : Math.round(rawScore);
 
-  // 從 description 抽出派遣建議
+  // 從 description 抽出派遣建議；後端依案件類型會寫成「建議派遣：」或「建議通報：」
   const desc = String(raw.description || '');
-  const dispatchMatch = desc.match(/建議派遣：[^|。\n]+/);
-  const aiSuggestion = dispatchMatch
-    ? dispatchMatch[0].replace('建議派遣：', '').trim()
-    : '待確認';
+  const dispatchMatch = desc.match(/建議(?:派遣|通報)：([^|。\n]+)/);
+  const aiSuggestion = dispatchMatch ? dispatchMatch[1].trim() : '待確認';
 
   const locStr = String(raw.location || '');
 
@@ -178,7 +176,8 @@ function normalizeCase(raw) {
 // 將案件描述中常見的欄位標籤（姓名／電話／緊急聯絡人／地址備註…）各自換行，
 // 使其呈現方式與通報端一致（一行一個欄位），而非擠成一整段文字
 function formatCaseDescription(text) {
-  var s = String(text || '').trim();
+  // App 端 AI 產生的描述以「 | 」分隔欄位，同樣拆成一行一個
+  var s = String(text || '').trim().replace(/\s*\|\s*/g, '\n');
   ['姓名：', '電話：', '緊急聯絡人：', '地址/備註：', '請依狀況判斷'].forEach(function (label) {
     s = s.replace(new RegExp('\\s*' + label, 'g'), '\n' + label);
   });
@@ -187,6 +186,8 @@ function formatCaseDescription(text) {
 
 function formatTimeAgo(date) {
   const diff = Math.floor((Date.now() - date.getTime()) / 1000);
+  // 瀏覽器時鐘比伺服器慢時 diff 會是負的，一律視為剛建立
+  if (diff < 10) return '剛剛';
   if (diff < 60) return diff + ' 秒前';
   if (diff < 3600) return Math.floor(diff / 60) + ' 分鐘前';
   if (diff < 86400) return Math.floor(diff / 3600) + ' 小時前';
@@ -272,6 +273,7 @@ async function loadCases() {
     const res = await fetch(API_BASE + '/reports');
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const rawData = await res.json();
+    hasLoadedCases = true;
 
     // ★ 將所有歷史案件依日期同步至 caseHistory（供頁面三歷史紀錄使用）
     if (typeof caseHistory !== 'undefined') {
@@ -387,7 +389,6 @@ function showApiError() {
 // ====================================================
 document.addEventListener('DOMContentLoaded', function () {
   setupThemeToggle();
-  setupSoundToggle();
   setupStatsToggle();
   renderList();       // 先渲染空列表（顯示「載入中」）
   loadCases();        // 拉取 API
@@ -403,7 +404,8 @@ function renderList() {
 
   if (cases.length === 0) {
     container.innerHTML =
-      '<div style="padding:20px;color:var(--text-dim);font-size:13px;text-align:center;">載入中…</div>';
+      '<div style="padding:20px;color:var(--text-dim);font-size:13px;text-align:center;">' +
+      (hasLoadedCases ? '今日尚無案件' : '載入中…') + '</div>';
     return;
   }
 
@@ -461,6 +463,21 @@ function renderList() {
   });
 
   updateHeaderStats();
+}
+
+// 案件負責單位：依案件座標推估（見 police_map.js findResponsibleUnit）
+function getResponsibleUnit(c) {
+  return typeof findResponsibleUnit === 'function' ? findResponsibleUnit(c.lat, c.lng) : null;
+}
+
+function responsibleUnitHtml(c) {
+  var u = getResponsibleUnit(c);
+  var icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>';
+  var body = u
+    ? '<span class="responsible-value">' + escapeHtml(u.bureau) + '　' + escapeHtml(u.unit) + '</span>' +
+      '<span class="responsible-hint">推估・' + (u.sameTown ? '' : '該鄉鎮無單位，取同縣市最近・') + '距案件約 ' + u.km + ' 公里</span>'
+    : '<span class="responsible-hint">無法判斷（' + (c.lat == null ? '案件缺少座標' : '座標不在任何鄉鎮內') + '）</span>';
+  return '<div class="address-field responsible-field">' + icon + '<span class="responsible-label">負責單位</span>' + body + '</div>';
 }
 
 function getStatusBadge(status) {
@@ -527,17 +544,11 @@ function renderDetail(id) {
 
   panel.innerHTML =
     // ---- 標題列 ----
-    '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">' +
     '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
     '<span class="case-code" style="font-size:16px;">' + escapeHtml(c.code) + '</span>' +
     '<span class="risk-badge ' + rCls + '">風險 ' + c.riskScore + '</span>' +
     '<span style="font-size:13px;color:var(--text-muted);">' + escapeHtml(c.type) + '</span>' +
     statusBadgeHtml +
-    '</div>' +
-    '<div class="detail-actions">' +
-    '<button class="btn-detail-action" onclick="openEditModal(\'' + escapeJsAttr(c.id) + '\')" aria-label="修改案件">修改</button>' +
-    '<button class="btn-detail-action danger-btn" onclick="confirmDelete(\'' + escapeJsAttr(c.id) + '\')" aria-label="刪除案件">刪除</button>' +
-    '</div>' +
     '</div>' +
 
     // ---- 地址 ----
@@ -546,6 +557,9 @@ function renderDetail(id) {
     '<span style="flex:1;">' + escapeHtml(c.address) + '</span>' +
     mapsLink +
     '</div>' +
+
+    // ---- 負責單位 ----
+    responsibleUnitHtml(c) +
 
     // ---- 建立時間 ----
     '<div style="font-size:12px;color:var(--text-dim);padding:0 4px;">建立時間：' +
@@ -563,7 +577,7 @@ function renderDetail(id) {
     '<div class="info-section-body">' +
     '<div class="info-row"><span class="info-label">分級：</span><span class="info-value ' + rCls + '">' + c.level + '</span></div>' +
     '<div class="info-row"><span class="info-label">危險程度：</span><span class="info-value ' + rCls + '">' + c.dangerLevel + '</span></div>' +
-    '<div class="info-row"><span class="info-label">風險分數：</span><span class="info-value">' + (c.rawScore.toFixed ? c.rawScore.toFixed(4) : c.rawScore) + '</span></div>' +
+    '<div class="info-row"><span class="info-label">風險分數：</span><span class="info-value">' + c.riskScore + ' / 100</span></div>' +
     '<div class="info-row"><span class="info-label">AI 建議：</span><span class="info-value">' + escapeHtml(c.aiSuggestion) + '</span></div>' +
     '</div>' +
     '</div>' +
@@ -608,12 +622,6 @@ function patchDetailTexts(id) {
   // 只有 detailContent 已渲染（有子元素）才 patch，避免覆蓋空白初始畫面
   const panel = document.getElementById('detailContent');
   if (!panel || !panel.children.length) return;
-
-  // helper：安全設定文字，只在值有變才改（避免不必要的 repaint）
-  function setText(selector, value) {
-    var el = panel.querySelector(selector);
-    if (el && el.textContent !== String(value)) el.textContent = String(value);
-  }
 
   // 找到各個 info-row 的 info-value（依照 info-label 文字辨識）
   panel.querySelectorAll('.info-row').forEach(function (row) {
@@ -723,21 +731,6 @@ function handleDispatch(op, label) {
     return;
   }
 
-  if (op === 'manual') {
-    openModal({
-      title: '轉人工處理',
-      subtitle: '將案件 ' + c.code + ' 轉交人工處理',
-      confirmText: '確認轉人工', showNote: true,
-      onConfirm: function (note) {
-        applyLocalStatus(c.id, '已轉人工', note);
-        addLog('轉人工', note);
-        renderList(); renderDetail(c.id);
-        showToast('案件 ' + c.code + ' 已轉交人工', 'safe');
-      }
-    });
-    return;
-  }
-
   openModal({
     title: label,
     subtitle: '對案件 ' + c.code + '（' + c.address + '）執行操作',
@@ -839,66 +832,6 @@ function confirmModal() {
 document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeModal(); });
 
 // ====================================================
-// 修改案件（本地）
-// ====================================================
-function openEditModal(id) {
-  var c = cases.find(function (x) { return x.id === id; });
-  if (!c) return;
-  openModal({
-    title: '修改案件',
-    subtitle: '修改案件 ' + c.code + '（不推送後端）',
-    confirmText: '儲存', showNote: false,
-    extraFields:
-      '<div class="modal-field"><label class="modal-label">案件描述</label>' +
-      '<textarea class="modal-textarea" id="ef-scene" rows="4">' + escapeHtml(c.sceneStatus) + '</textarea></div>' +
-      '<div class="modal-field"><label class="modal-label">AI 建議</label>' +
-      '<input class="modal-input" id="ef-ai" value="' + escapeHtml(c.aiSuggestion) + '"/></div>',
-    onConfirm: function () {
-      var scene = (document.getElementById('ef-scene') || {}).value;
-      var ai = (document.getElementById('ef-ai') || {}).value;
-      if (scene != null) c.sceneStatus = scene.trim();
-      if (ai != null) c.aiSuggestion = ai.trim();
-      addLog('修改案件資訊');
-      renderList(); renderDetail(c.id);
-      showToast('案件資訊已更新', 'safe');
-    }
-  });
-}
-
-// ====================================================
-// 刪除案件（本地）
-// ====================================================
-function confirmDelete(id) {
-  var c = cases.find(function (x) { return x.id === id; });
-  if (!c) return;
-  openModal({
-    title: '刪除案件',
-    subtitle: '確定刪除案件 ' + c.code + '（' + c.type + '）？（不推送後端）',
-    confirmText: '確認刪除', confirmClass: 'danger', showNote: false,
-    onConfirm: function () {
-      cases = cases.filter(function (x) { return x.id !== id; });
-      delete localChanges[id];
-      selectedCaseId = null;
-      renderList();
-      if (typeof renderTodayMapDots === 'function') renderTodayMapDots();
-      var panel = document.getElementById('detailContent');
-      if (panel) panel.innerHTML =
-        '<div class="no-case-selected">' +
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">' +
-        '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>' +
-        '</svg><p>請從左側選擇案件查看詳細資訊</p></div>';
-      var logList = document.getElementById('logList');
-      if (logList) logList.innerHTML = '<div class="log-empty">尚無操作紀錄</div>';
-      updateDispatchButtons(true);
-      showToast('案件已刪除', 'safe');
-    }
-  });
-}
-
-// ====================================================
-// 音效開關
-// ====================================================
-// ====================================================
 // 亮/暗主題切換
 // ====================================================
 function _currentTheme() {
@@ -923,18 +856,6 @@ function setupThemeToggle() {
     document.documentElement.setAttribute('data-theme', next);
     try { localStorage.setItem('ecare_theme', next); } catch (e) {}
     updateLabel();
-  });
-}
-
-function setupSoundToggle() {
-  var btn = document.getElementById('soundToggle');
-  if (!btn) return;
-  btn.addEventListener('click', function () {
-    soundEnabled = !soundEnabled;
-    btn.querySelector('.sound-label').textContent = soundEnabled ? '音效：開啟' : '音效：關閉';
-    btn.querySelector('.sound-icon').textContent = '';
-    btn.classList.toggle('off', !soundEnabled);
-    showToast(soundEnabled ? '音效已開啟' : '音效已關閉', 'safe');
   });
 }
 

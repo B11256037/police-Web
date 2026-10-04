@@ -229,40 +229,6 @@ body {
   background: var(--panel-3);
 }
 
-.theme-toggle-icon {
-  font-size: 14px;
-  line-height: 1;
-}
-
-.sound-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 8px 14px;
-  cursor: pointer;
-  color: var(--text);
-  font-family: var(--font);
-  font-size: 14px;
-  transition: all var(--transition);
-}
-
-.sound-toggle:hover {
-  border-color: var(--accent);
-  background: var(--panel-3);
-}
-
-.sound-toggle.off {
-  color: var(--text-muted);
-}
-
-.sound-toggle svg {
-  width: 16px;
-  height: 16px;
-}
-
 /* 系統狀態 */
 .system-status {
   display: flex;
@@ -760,6 +726,29 @@ body {
   flex-shrink: 0;
 }
 
+/* 負責單位：沿用地址欄外框，內容可換行 */
+.responsible-field {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.responsible-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+
+.responsible-value {
+  flex: 1;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.responsible-hint {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
 /* 分析/摘要區塊 */
 .info-section {
   background: var(--panel);
@@ -909,37 +898,6 @@ body {
   color: var(--text-dim);
   font-size: 12px;
   padding: 10px 16px;
-}
-
-/* 案件操作按鈕 (在 detail header) */
-.detail-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.btn-detail-action {
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 6px 12px;
-  color: var(--text-muted);
-  font-size: 12px;
-  font-family: var(--font);
-  cursor: pointer;
-  transition: all var(--transition);
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.btn-detail-action:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.btn-detail-action.danger-btn:hover {
-  border-color: var(--danger);
-  color: var(--danger-text);
 }
 
 /* =========================================================
@@ -2398,11 +2356,6 @@ input[type="date"].modal-input {
 
   .header-controls {
     gap: 14px;
-  }
-
-  /* 隱藏音效文字，保留按鈕 */
-  .sound-label {
-    display: none;
   }
 
   /* 統計列橫向可滾動，隱藏捲軸 */
