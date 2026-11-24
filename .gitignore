@@ -9,3 +9,6 @@ __pycache__/
 # OS
 .DS_Store
 Thumbs.db
+
+# 內部籌備資料（講稿、QA、情境劇）— 不公開
+籌備資料/
