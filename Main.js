@@ -14,7 +14,8 @@
 // ====================================================
 // 設定
 // ====================================================
-const API_BASE = 'https://police-api.ignirelay.com';
+// 後端位址由 config.js 提供（不進版控）；缺少時退回本機
+const API_BASE = window.ECARE_API_BASE || 'http://localhost:8000';
 const POLL_INTERVAL = 3000;
 
 // ====================================================

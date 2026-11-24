@@ -21,7 +21,7 @@ E-CARE（Emergency Care）是一套警察局緊急報案管理儀表板，提供
 | 備用地址解析 | Nominatim（OpenStreetMap Geocoding API） |
 | 字型 | Google Fonts — Noto Sans TC |
 | 後端 | FastAPI（`專題/Ecare`，本機 port 8000） |
-| 對外網址 | Cloudflare Tunnel：網頁 `police.ignirelay.com`、API `police-api.ignirelay.com` |
+| 對外網址 | Cloudflare Tunnel（實際網域設定於不進版控的 `config.js`） |
 | 資料庫 | PostgreSQL（`ecare_db`，位於本機） |
 | 資料庫工具 | DBeaver |
 
@@ -441,7 +441,7 @@ todayMap（Leaflet Map）
 API 位址設定在 `Main.js` 第 17 行：
 
 ```js
-const API_BASE = 'https://police-api.ignirelay.com';
+const API_BASE = window.ECARE_API_BASE || 'http://localhost:8000';   // 由 config.js 提供
 ```
 
 本機開發時可改為 `http://127.0.0.1:8000`。網頁若以 HTTPS 開啟，`API_BASE` 也必須是 HTTPS，否則會被瀏覽器擋下。

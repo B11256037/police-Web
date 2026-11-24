@@ -354,7 +354,7 @@ DB_PASSWORD=<密碼> PYTHONUTF8=1 python -m uvicorn backend.main:app --host 0.0.
 前端後端網址設定在 `Main.js` 第 17 行：
 
 ```js
-const API_BASE = 'https://police-api.ignirelay.com';
+const API_BASE = window.ECARE_API_BASE || 'http://localhost:8000';   // 由 config.js 提供
 ```
 
 本機開發時可改為 `http://127.0.0.1:8000`。注意：若網頁本身是以 HTTPS 提供，`API_BASE` 也必須是 HTTPS，否則會被瀏覽器的 Mixed Content 政策擋下。
